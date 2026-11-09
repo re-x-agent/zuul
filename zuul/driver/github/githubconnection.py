@@ -525,11 +525,11 @@ class GithubEventProcessor(object):
         elif action == 'labeled':
             event.action = 'labeled'
             event.label = self.body['label']['name']
-            event.topic_changed = self.connection.isTopicLabel(event.label)
+            event.topic_changed = True
         elif action == 'unlabeled':
             event.action = 'unlabeled'
             event.label = self.body['label']['name']
-            event.topic_changed = self.connection.isTopicLabel(event.label)
+            event.topic_changed = True
         elif action == 'edited':
             event.action = 'edited'
             if 'body' in self.body.get('changes', {}):
@@ -1302,12 +1302,6 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
         self.max_threads_per_installation = int(self.connection_config.get(
             'max_threads_per_installation', 1))
 
-        # Optional: labels starting with this prefix (case-insensitive)
-        # are read as a "topic" for dependencies-by-topic.  Unset by
-        # default, which disables the feature for this connection.
-        self.topic_label_prefix = (
-            self.connection_config.get('topic_label_prefix') or None)
-
         self._github_client_manager = self.client_manager_class(
             self.connection_config)
 
@@ -1552,38 +1546,30 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
             change = self._change_cache.get(change_key)
         return change
 
-    def isTopicLabel(self, label):
-        """Return whether a label name is a topic label."""
-        prefix = self.topic_label_prefix
-        if not prefix or not label:
-            return False
-        return (label.casefold().startswith(prefix.casefold()) and
-                len(label) > len(prefix))
+    # Zuul models the topic of a change as one string.  For a pull
+    # request that string is the list of its label names (see
+    # getTopicFromLabels); two pull requests are in the same topic if
+    # they share a label (see PullRequest.sharesTopic).
+    TOPIC_SEPARATOR = '\n'
 
     def getTopicFromLabels(self, labels, event=None):
-        """Return the topic of a pull request with the given labels
+        """Return the topic string of a pull request with the given labels
 
-        The topic is the remainder of the name of a label which starts
-        with the connection's topic_label_prefix.  Zuul models a
-        single topic per change; if more than one topic label is
-        present, the lexicographically smallest topic (compared
-        case-insensitively) is used and a warning is logged.
-
-        Returns None if the feature is not enabled or no label matches.
+        The name of a label is a topic: pull requests which carry the
+        same label (compared case-insensitively, like GitHub label
+        names) are in the same topic.  As Zuul stores one string per
+        change, the string holds all the distinct label names of the
+        pull request, sorted; it is only a container, and is not
+        compared as a whole.  Returns None if there is no label.
         """
-        log = get_annotated_logger(self.log, event)
-        if not self.topic_label_prefix:
+        names = {}
+        for label in (labels or []):
+            if label:
+                names.setdefault(label.casefold(), label)
+        if not names:
             return None
-        topics = sorted(
-            {label[len(self.topic_label_prefix):]
-             for label in (labels or []) if self.isTopicLabel(label)},
-            key=lambda t: (t.casefold(), t))
-        if not topics:
-            return None
-        if len(topics) > 1:
-            log.warning("Multiple topic labels found (%s), using %s",
-                        topics, topics[0])
-        return topics[0]
+        return self.TOPIC_SEPARATOR.join(
+            names[k] for k in sorted(names))
 
     # GitHub's search API returns at most 1000 results per query.
     TOPIC_SEARCH_MAX_RESULTS = 1000
@@ -1595,14 +1581,15 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
         or users) of the projects known to this connection.
         """
         log = get_annotated_logger(self.log, event)
-        if not topic or not self.topic_label_prefix:
+        if not topic:
             return []
 
-        label = self.topic_label_prefix + topic
-        # The search API has no way to match a label prefix and
-        # matches the label name case-insensitively; the topic is
-        # compared again below, on the data of the pull requests.
-        label_query = label.replace('\\', '\\\\').replace('"', '\\"')
+        # The search API matches the whole label name (there is no
+        # prefix matching), case-insensitively.  One query is made
+        # per label of the topic.  The labels of each result are
+        # compared again for an exact match below, so a pull request
+        # is only returned if it shares a label with the topic.
+        wanted = {x.casefold() for x in topic.split(self.TOPIC_SEPARATOR)}
 
         # One query per owner, using the installation of one of that
         # owner's projects.  Without scoping, the search would also
@@ -1618,37 +1605,43 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
 
         keys = []
         seen = set()
-        for owner, project_name in client_projects.items():
-            github = self.getGithubClient(project_name, zuul_event_id=event)
-            query = 'type:pr is:open label:"%s" org:%s' % (label_query, owner)
-            count = 0
-            for issue in github.search_issues(query=query):
-                count += 1
-                if count >= self.TOPIC_SEARCH_MAX_RESULTS:
-                    # Fail closed rather than gate on a partial set.
-                    raise Exception(
-                        "Too many results (%s) for topic query: %s" %
-                        (count, query))
-                pr = issue.issue.pull_request().as_dict()
-                if not pr.get('url'):
-                    continue
-                proj = pr.get('base').get('repo').get('full_name')
-                num = str(pr.get('number'))
-                sha = pr.get('head').get('sha')
-                # Only consider projects Zuul knows about.
-                if not self.getProject(proj):
-                    continue
-                # Check the labels of the data we just fetched
-                pr_labels = [lbl.get('name') for lbl in pr.get('labels', [])]
-                pr_topic = self.getTopicFromLabels(pr_labels, event=event)
-                if not pr_topic or pr_topic.casefold() != topic.casefold():
-                    continue
-                key = (proj, num, sha)
-                if key in seen:
-                    continue
-                seen.add(key)
-                keys.append(key)
-            log.debug("Ran search issues: %s", query)
+        for label in sorted(wanted):
+            label_query = label.replace('\\', '\\\\').replace(
+                '"', '\\"')
+            for owner, project_name in client_projects.items():
+                github = self.getGithubClient(
+                    project_name, zuul_event_id=event)
+                query = 'type:pr is:open label:"%s" org:%s' % (
+                    label_query, owner)
+                count = 0
+                for issue in github.search_issues(query=query):
+                    count += 1
+                    if count >= self.TOPIC_SEARCH_MAX_RESULTS:
+                        # Fail closed rather than gate on a partial set.
+                        raise Exception(
+                            "Too many results (%s) for topic query: %s" %
+                            (count, query))
+                    pr = issue.issue.pull_request().as_dict()
+                    if not pr.get('url'):
+                        continue
+                    proj = pr.get('base').get('repo').get('full_name')
+                    num = str(pr.get('number'))
+                    sha = pr.get('head').get('sha')
+                    # Only consider projects Zuul knows about.
+                    if not self.getProject(proj):
+                        continue
+                    # Check the labels of the data we just fetched
+                    pr_labels = {lbl.get('name').casefold()
+                                 for lbl in pr.get('labels', [])
+                                 if lbl.get('name')}
+                    if not (pr_labels & wanted):
+                        continue
+                    key = (proj, num, sha)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    keys.append(key)
+                log.debug("Ran search issues: %s", query)
 
         changes = []
         for proj, num, sha in keys:

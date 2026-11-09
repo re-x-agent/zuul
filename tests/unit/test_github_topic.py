@@ -10,23 +10,17 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+from unittest import mock
+
+from tests import fakegithub
 from zuul.zk.change_cache import ChangeKey
 from tests.base import ZuulTestCase, simple_layout
 
 
 class TestGithubTopicLabels(ZuulTestCase):
-    """Topic dependencies derived from GitHub labels"""
+    """Topic dependencies: the name of a label is the topic"""
     config_file = 'zuul-github-driver.conf'
     scheduler_count = 1
-
-    topic_label_prefix = 'topic:'
-
-    def setup_config(self, config_file):
-        config = super().setup_config(config_file)
-        if self.topic_label_prefix:
-            config.set('connection github', 'topic_label_prefix',
-                       self.topic_label_prefix)
-        return config
 
     def _pr(self, project, name, labels=(), body=None):
         pr = self.fake_github.openFakePullRequest(
@@ -38,29 +32,71 @@ class TestGithubTopicLabels(ZuulTestCase):
     def _connection(self):
         return self.scheds.first.connections.connections['github']
 
+    def _numbers(self, topic):
+        return sorted(
+            c.number for c in self._connection().getChangesByTopic(topic))
+
     @simple_layout('layouts/github-topic-deps.yaml', driver='github')
     def test_topic_from_labels(self):
         conn = self._connection()
-        self.assertEqual('foo', conn.getTopicFromLabels(['topic:foo']))
-        self.assertEqual('foo', conn.getTopicFromLabels(['bug', 'topic:foo']))
-        # The prefix matches case-insensitively, the topic keeps its
-        # spelling.
-        self.assertEqual('Foo', conn.getTopicFromLabels(['Topic:Foo']))
+        # The label names are the topic string (a container, sorted),
+        # in their original spelling.
+        self.assertEqual('foo', conn.getTopicFromLabels(['foo']))
+        self.assertEqual('Foo', conn.getTopicFromLabels(['Foo']))
+        # A colon is part of the name; there is no special marker.
+        self.assertEqual('topic:foo', conn.getTopicFromLabels(['topic:foo']))
+        self.assertEqual('bug', conn.getTopicFromLabels(['bug']))
+        # No label, no topic.
         self.assertIsNone(conn.getTopicFromLabels([]))
-        self.assertIsNone(conn.getTopicFromLabels(['bug', 'topical']))
-        # A prefix without a name is not a topic.
-        self.assertIsNone(conn.getTopicFromLabels(['topic:']))
-        # Several topics: one is picked, deterministically.
+        self.assertIsNone(conn.getTopicFromLabels(None))
+        # Several labels: all of them, sorted; none is preferred.
+        self.assertEqual('a\nb', conn.getTopicFromLabels(['b', 'a']))
+        # The same label in another case is still one label.
+        self.assertEqual('Foo', conn.getTopicFromLabels(['Foo', 'foo']))
+
+    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
+    def test_topic_shares_label(self):
+        "Pull requests are in a topic if they share any label"
+        A = self._pr('org/project1', 'A', ['x'])
+        B = self._pr('org/project2', 'B', ['x', 'y'])
+        C = self._pr('org/project3', 'C', ['y'])
+        D = self._pr('org/project1', 'D', ['z'])
+
+        self.assertEqual([A.number, B.number], self._numbers('x'))
+        # B has two labels: it finds the pull requests of both.
         self.assertEqual(
-            'a', conn.getTopicFromLabels(['topic:b', 'topic:a']))
-        self.assertTrue(conn.isTopicLabel('topic:foo'))
-        self.assertFalse(conn.isTopicLabel('bug'))
+            sorted([A.number, B.number, C.number]), self._numbers('x\ny'))
+        self.assertEqual([D.number], self._numbers('z'))
+
+        self.fake_github.emitEvent(A.getPullRequestEditedEvent())
+        self.waitUntilSettled()
+
+        # A and C are linked through B (circular dependencies are
+        # transitive); D is not.
+        self.assertTrue(A.is_merged)
+        self.assertTrue(B.is_merged)
+        self.assertTrue(C.is_merged)
+        self.assertFalse(D.is_merged)
+
+    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
+    def test_topic_colon_label_is_ordinary(self):
+        "A label with a colon is one name; a prefix does not group"
+        A = self._pr('org/project1', 'A', ['topic:a'])
+        B = self._pr('org/project2', 'B', ['topic:b'])
+        C = self._pr('org/project3', 'C', ['topic:a'])
+
+        self.fake_github.emitEvent(A.getPullRequestEditedEvent())
+        self.waitUntilSettled()
+
+        self.assertTrue(A.is_merged)
+        self.assertTrue(C.is_merged)
+        self.assertFalse(B.is_merged)
 
     @simple_layout('layouts/github-topic-deps.yaml', driver='github')
     def test_topic_gate(self):
         "Pull requests with the same topic label are gated together"
-        A = self._pr('org/project1', 'A', ['topic:t1'])
-        B = self._pr('org/project2', 'B', ['topic:t1'])
+        A = self._pr('org/project1', 'A', ['t1'])
+        B = self._pr('org/project2', 'B', ['t1'])
 
         self.fake_github.emitEvent(A.getPullRequestEditedEvent())
         self.waitUntilSettled()
@@ -74,10 +110,60 @@ class TestGithubTopicLabels(ZuulTestCase):
             self.assertIn(str(B.number) + ',' + B.head_sha, job.changes)
 
     @simple_layout('layouts/github-topic-deps.yaml', driver='github')
+    def test_topic_exact_match_not_prefix(self):
+        "Topic 1 and topic 11 are different topics (exact match only)"
+        A = self._pr('org/project1', 'A', ['1'])
+        B = self._pr('org/project2', 'B', ['11'])
+        C = self._pr('org/project3', 'C', ['1'])
+        conn = self._connection()
+
+        def numbers(topic):
+            return sorted(c.number for c in conn.getChangesByTopic(topic))
+
+        self.assertEqual(sorted([A.number, C.number]), numbers('1'))
+        self.assertEqual([B.number], numbers('11'))
+
+        self.fake_github.emitEvent(A.getPullRequestEditedEvent())
+        self.waitUntilSettled()
+
+        self.assertTrue(A.is_merged)
+        self.assertTrue(C.is_merged)
+        self.assertFalse(B.is_merged)
+        for job in self.history:
+            self.assertNotIn(
+                str(B.number) + ',' + B.head_sha, job.changes)
+
+    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
+    def test_topic_exact_match_loose_search(self):
+        "Results of a looser search are filtered to the exact topic"
+        A = self._pr('org/project1', 'A', ['1'])
+        B = self._pr('org/project2', 'B', ['11'])
+        D = self._pr('org/project3', 'D', ['1', '11'])
+
+        # Simulate a search that also returns labels merely starting
+        # with the requested one.
+        def loose_search(client, query):
+            label = query.split('label:"')[1].split('"')[0].lower()
+            return iter([
+                fakegithub.FakeIssueSearchResult(fakegithub.FakeIssue(pr))
+                for pr in client._data.pull_requests.values()
+                if pr.state == 'open' and
+                any(x.lower().startswith(label) for x in pr.labels)])
+
+        with mock.patch.object(fakegithub.FakeGithubClient,
+                               'search_issues', loose_search):
+            # D has both labels, so it is in both topics; B (11) is
+            # not in topic 1 although "11" starts with "1".
+            self.assertEqual(
+                sorted([A.number, D.number]), self._numbers('1'))
+            self.assertEqual(
+                sorted([B.number, D.number]), self._numbers('11'))
+
+    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
     def test_topic_case_insensitive(self):
         "The topic label is matched case-insensitively"
-        A = self._pr('org/project1', 'A', ['topic:T1'])
-        B = self._pr('org/project2', 'B', ['Topic:t1'])
+        A = self._pr('org/project1', 'A', ['T1'])
+        B = self._pr('org/project2', 'B', ['t1'])
 
         self.fake_github.emitEvent(A.getPullRequestEditedEvent())
         self.waitUntilSettled()
@@ -88,8 +174,8 @@ class TestGithubTopicLabels(ZuulTestCase):
     @simple_layout('layouts/github-topic-deps.yaml', driver='github')
     def test_topic_different_topics(self):
         "Pull requests with different topics are not combined"
-        A = self._pr('org/project1', 'A', ['topic:t1'])
-        B = self._pr('org/project2', 'B', ['topic:t2'])
+        A = self._pr('org/project1', 'A', ['t1'])
+        B = self._pr('org/project2', 'B', ['t2'])
 
         self.fake_github.emitEvent(A.getPullRequestEditedEvent())
         self.waitUntilSettled()
@@ -102,9 +188,10 @@ class TestGithubTopicLabels(ZuulTestCase):
 
     @simple_layout('layouts/github-topic-deps.yaml', driver='github')
     def test_topic_no_label(self):
-        "Pull requests without a topic label are not combined"
-        A = self._pr('org/project1', 'A', ['bug'])
-        B = self._pr('org/project2', 'B', ['bug'])
+        "Pull requests without labels have no topic and are not combined"
+        A = self._pr('org/project1', 'A')
+        B = self._pr('org/project2', 'B')
+        self.assertEqual([], self._connection().getChangesByTopic(None))
 
         self.fake_github.emitEvent(A.getPullRequestEditedEvent())
         self.waitUntilSettled()
@@ -116,8 +203,8 @@ class TestGithubTopicLabels(ZuulTestCase):
     @simple_layout('layouts/github-topic-deps.yaml', driver='github')
     def test_topic_closed_not_combined(self):
         "Closed pull requests are not part of the topic"
-        A = self._pr('org/project1', 'A', ['topic:t1'])
-        B = self._pr('org/project2', 'B', ['topic:t1'])
+        A = self._pr('org/project1', 'A', ['t1'])
+        B = self._pr('org/project2', 'B', ['t1'])
         B.state = 'closed'
 
         self.fake_github.emitEvent(A.getPullRequestEditedEvent())
@@ -132,8 +219,8 @@ class TestGithubTopicLabels(ZuulTestCase):
         "Topic and Depends-On dependencies are combined"
         C = self._pr('org/project3', 'C')
         msg = 'Depends-On: https://github.com/org/project3/pull/%s' % C.number
-        A = self._pr('org/project1', 'A', ['topic:t1'], body=msg)
-        B = self._pr('org/project2', 'B', ['topic:t1'])
+        A = self._pr('org/project1', 'A', ['t1'], body=msg)
+        B = self._pr('org/project2', 'B', ['t1'])
 
         self.fake_github.emitEvent(B.getPullRequestEditedEvent())
         self.waitUntilSettled()
@@ -159,7 +246,7 @@ class TestGithubTopicLabels(ZuulTestCase):
     def test_topic_label_added_to_queued(self):
         "Adding a topic label to a pull request updates queued peers"
         self.executor_server.hold_jobs_in_build = True
-        A = self._pr('org/project1', 'A', ['topic:t1'])
+        A = self._pr('org/project1', 'A', ['t1'])
         B = self._pr('org/project2', 'B')
 
         self.fake_github.emitEvent(A.getPullRequestEditedEvent())
@@ -173,7 +260,7 @@ class TestGithubTopicLabels(ZuulTestCase):
 
         # B joins the topic.  Only the label event is sent, so queued
         # A can only find out through the label event.
-        self.fake_github.emitEvent(B.addLabel('topic:t1'))
+        self.fake_github.emitEvent(B.addLabel('t1'))
         self.waitUntilSettled()
 
         needs = self._topic_needs(a_change)
@@ -189,8 +276,8 @@ class TestGithubTopicLabels(ZuulTestCase):
     def test_topic_label_removed_from_queued(self):
         "Removing a topic label from a pull request updates queued peers"
         self.executor_server.hold_jobs_in_build = True
-        A = self._pr('org/project1', 'A', ['topic:t1'])
-        B = self._pr('org/project2', 'B', ['topic:t1'])
+        A = self._pr('org/project1', 'A', ['t1'])
+        B = self._pr('org/project2', 'B', ['t1'])
 
         self.fake_github.emitEvent(A.getPullRequestEditedEvent())
         self.waitUntilSettled()
@@ -202,7 +289,7 @@ class TestGithubTopicLabels(ZuulTestCase):
                     or c.number == A.number][0]
         self.assertEqual(1, len(self._topic_needs(a_change)))
 
-        self.fake_github.emitEvent(B.removeLabel('topic:t1'))
+        self.fake_github.emitEvent(B.removeLabel('t1'))
         self.waitUntilSettled()
 
         self.assertEqual([], self._topic_needs(a_change))
@@ -210,37 +297,3 @@ class TestGithubTopicLabels(ZuulTestCase):
         self.executor_server.hold_jobs_in_build = False
         self.executor_server.release()
         self.waitUntilSettled()
-
-
-class TestGithubTopicLabelsDisabled(TestGithubTopicLabels):
-    "Without topic_label_prefix, topic labels have no effect"
-    topic_label_prefix = None
-
-    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
-    def test_topic_from_labels(self):
-        conn = self._connection()
-        self.assertIsNone(conn.getTopicFromLabels(['topic:foo']))
-        self.assertFalse(conn.isTopicLabel('topic:foo'))
-
-    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
-    def test_topic_disabled(self):
-        A = self._pr('org/project1', 'A', ['topic:t1'])
-        B = self._pr('org/project2', 'B', ['topic:t1'])
-
-        self.fake_github.emitEvent(A.getPullRequestEditedEvent())
-        self.waitUntilSettled()
-
-        self.assertTrue(A.is_merged)
-        self.assertFalse(B.is_merged)
-        self.assertEqual(1, len(self.history))
-
-    # The remaining tests of the parent class describe the enabled
-    # behavior.
-    test_topic_gate = None
-    test_topic_case_insensitive = None
-    test_topic_different_topics = None
-    test_topic_no_label = None
-    test_topic_closed_not_combined = None
-    test_topic_and_depends_on = None
-    test_topic_label_added_to_queued = None
-    test_topic_label_removed_from_queued = None

@@ -261,21 +261,6 @@ The supported options in ``zuul.conf`` connections are:
       git fetches every 30 seconds, and this value will be rounded up
       to the next highest multiple of 30 seconds.
 
-   .. attr:: topic_label_prefix
-      :default: None
-
-      If set, a pull request label whose name starts with this prefix
-      (compared case-insensitively) is read as a *topic*: the rest of
-      the label name is the topic.  For example, with
-      ``topic_label_prefix=topic:`` the label ``topic:release-1.4``
-      puts a pull request in the topic ``release-1.4``.
-
-      Pull requests of this connection which are open and have the
-      same topic are treated as dependencies of each other in queues
-      which set :attr:`queue.dependencies-by-topic`.  See
-      :ref:`github_topic_dependencies`.  If unset (the default),
-      labels have no effect on dependencies.
-
    .. attr:: max_threads_per_installation
       :default: 1
 
@@ -626,11 +611,14 @@ Topic dependencies
 ------------------
 
 GitHub has no built-in notion of a topic, but labels can serve as
-one.  When the connection option :attr:`<github connection>.topic_label_prefix`
-is set, and a queue sets :attr:`queue.dependencies-by-topic` (and
+one.  The name of a label is the topic; there is nothing to configure
+on the connection.  When a queue sets
+:attr:`queue.dependencies-by-topic` (and
 :attr:`queue.allow-circular-dependencies`), all open pull requests of
-the connection that carry the same topic label are treated as a set of
+the connection that carry the same label are treated as a set of
 circular dependencies, just as changes in the same Gerrit topic are.
+Labels are matched by their whole name (never by prefix, so ``1`` and
+``11`` are different topics), ignoring case like GitHub does.
 This can be combined with ``Depends-On:`` footers; the dependencies of
 both kinds are added together.
 
@@ -639,9 +627,14 @@ other pull requests of that topic which are already in a pipeline.
 
 Some points to be aware of:
 
-* Zuul models one topic per pull request.  If a pull request has more
-  than one topic label, the topic which sorts first (ignoring case) is
-  used and a warning is logged.
+* Every label is a topic: pull requests are in the same topic if they
+  share at least one label.  No label is preferred over another, and
+  a pull request without labels has no topic.  Any label counts, so in
+  a queue which sets :attr:`queue.dependencies-by-topic`, pull requests
+  which carry, for example, ``bug`` are treated as one topic.  Pull
+  requests with several labels link the topics of all their labels
+  (circular dependencies are transitive).  One search is made per
+  label of the pull request.
 * Pull requests are found with the GitHub search API, which is subject
   to its own rate limit, may take a short time to reflect a newly
   added label, and returns at most 1000 results per query.  If a topic

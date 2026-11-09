@@ -59,6 +59,18 @@ class PullRequest(Change):
             s[1] for s in self.contexts if s[2] == 'success'
         )
 
+    def sharesTopic(self, other):
+        # The topic string holds the label names of the pull request;
+        # two pull requests are in the same topic if they share a
+        # label (exact match of the whole name, ignoring case).
+        if not isinstance(other, PullRequest):
+            return False
+        if not self.topic or not other.topic:
+            return False
+        mine = {x.casefold() for x in self.topic.split('\n')}
+        theirs = {x.casefold() for x in other.topic.split('\n')}
+        return bool(mine & theirs)
+
     def isUpdateOf(self, other):
         if (self.project == other.project and
             hasattr(other, 'number') and self.number == other.number and
