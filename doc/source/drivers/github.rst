@@ -264,8 +264,12 @@ The supported options in ``zuul.conf`` connections are:
    .. attr:: topic_label_marker
       :default: None
 
-      The marker which identifies a pull request label as a *topic*
-      label.  A label is read as a *label name*, a *separator* (``:``)
+      The purpose of this option is to treat pull requests the way
+      Gerrit treats changes: changes with the same topic are handled
+      as one set, and with this option pull requests with the same
+      topic are handled as one set too.  It sets the marker which
+      identifies a pull request label as a *topic* label.  A label is
+      read as a *label name*, a *separator* (``:``)
       and a *label value*.  The marker is the label name plus the
       separator, for example ``topic:``.  A label which starts with
       the marker (compared case-insensitively) is a topic label, and
@@ -633,8 +637,11 @@ itself. Status name, description, and context is taken from the pipeline.
 Topic dependencies
 ------------------
 
-GitHub has no built-in notion of a topic, but labels can serve as
-one.  GitHub does not split a label into parts, so Zuul reads a label
+Gerrit changes which share a topic are handled as one set.  The aim of
+topic dependencies for GitHub is to give pull requests the same
+treatment: pull requests with the same topic are handled as one set,
+as changes in the same Gerrit topic are.  GitHub has no built-in
+notion of a topic, but labels can serve as one.  GitHub does not split a label into parts, so Zuul reads a label
 by convention as a *label name*, a *separator* (``:``) and a *label
 value*; the label ``topic:release-1.4`` has the name ``topic`` and the
 value ``release-1.4``.  The connection option
