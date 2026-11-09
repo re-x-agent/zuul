@@ -57,6 +57,9 @@ class TestGithubTopicLabels(ZuulTestCase):
         self.assertEqual(
             'a', conn.getTopicFromLabels(['topic:b', 'topic:a']))
         self.assertTrue(conn.isTopicLabel('topic:foo'))
+        # The value is everything after the marker: a value may contain
+        # the separator.
+        self.assertEqual('a:b', conn.getTopicFromLabels(['topic:a:b']))
         self.assertFalse(conn.isTopicLabel('bug'))
 
     @simple_layout('layouts/github-topic-deps.yaml', driver='github')
@@ -128,6 +131,32 @@ class TestGithubTopicLabels(ZuulTestCase):
             self.assertEqual(
                 [B.number],
                 sorted(c.number for c in conn.getChangesByTopic('11')))
+
+    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
+    def test_topic_value_with_separator(self):
+        "A label value may contain the separator; it is matched whole"
+        A = self._pr('org/project1', 'A', ['topic:a:b'])
+        B = self._pr('org/project2', 'B', ['topic:a:b'])
+        C = self._pr('org/project3', 'C', ['topic:a'])
+        conn = self._connection()
+
+        def numbers(topic):
+            return sorted(c.number for c in conn.getChangesByTopic(topic))
+
+        # topic:a:b has the value "a:b" and pairs with itself ...
+        self.assertEqual(sorted([A.number, B.number]), numbers('a:b'))
+        # ... but not with topic:a (exact match of the value).
+        self.assertEqual([C.number], numbers('a'))
+
+        self.fake_github.emitEvent(A.getPullRequestEditedEvent())
+        self.waitUntilSettled()
+
+        self.assertTrue(A.is_merged)
+        self.assertTrue(B.is_merged)
+        self.assertFalse(C.is_merged)
+        for job in self.history:
+            self.assertNotIn(
+                str(C.number) + ',' + C.head_sha, job.changes)
 
     @simple_layout('layouts/github-topic-deps.yaml', driver='github')
     def test_topic_case_insensitive(self):
@@ -296,6 +325,7 @@ class TestGithubTopicLabelsDisabled(TestGithubTopicLabels):
     test_topic_case_insensitive = None
     test_topic_exact_match_not_prefix = None
     test_topic_exact_match_loose_search = None
+    test_topic_value_with_separator = None
     test_topic_different_topics = None
     test_topic_no_label = None
     test_topic_closed_not_combined = None
