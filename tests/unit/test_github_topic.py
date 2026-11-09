@@ -10,14 +10,17 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import re
 from unittest import mock
 
 from tests import fakegithub
+from zuul.driver.github.githubconnection import GithubConnection
+from zuul.model import Project
 from zuul.zk.change_cache import ChangeKey
-from tests.base import ZuulTestCase, simple_layout
+from tests.base import ZuulGithubAppTestCase, simple_layout
 
 
-class TestGithubTopicLabels(ZuulTestCase):
+class TestGithubTopicLabels(ZuulGithubAppTestCase):
     """Topic dependencies derived from GitHub labels"""
     config_file = 'zuul-github-driver.conf'
     scheduler_count = 1
@@ -157,6 +160,121 @@ class TestGithubTopicLabels(ZuulTestCase):
         for job in self.history:
             self.assertNotIn(
                 str(C.number) + ',' + C.head_sha, job.changes)
+
+    def _recordSearches(self):
+        """Record the search queries and the installation of the client"""
+        queries = []
+        original = fakegithub.FakeGithubClient.search_issues
+
+        def recording(client, query):
+            queries.append((client._inst_id, query))
+            return original(client, query)
+
+        patcher = mock.patch.object(
+            fakegithub.FakeGithubClient, 'search_issues', recording)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return queries
+
+    def _addProject(self, name):
+        """Configure a project of another owner and install the App there"""
+        conn = self._connection()
+        owner, project = name.split('/')
+        # Only the names are used to prime the installation map.
+        repos = self.fake_github.github_data.repos
+        repos[(owner, project)] = mock.Mock()
+        self.addCleanup(repos.pop, (owner, project), None)
+        conn.projects[name] = Project(name, conn.source)
+        self.addCleanup(conn.projects.pop, name, None)
+        conn._github_client_manager._prime_installation_map()
+
+    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
+    def test_topic_search_per_installation(self):
+        "One search per installation, listing only its configured projects"
+        self._addProject('org2/projectx')
+        conn = self._connection()
+        A = self._pr('org/project1', 'A', ['topic:t1'])
+        inst = conn._github_client_manager.installation_map
+        self.assertNotEqual(inst['org/project1'], inst['org2/projectx'])
+        queries = self._recordSearches()
+
+        numbers = sorted(c.number for c in conn.getChangesByTopic('t1'))
+
+        self.assertEqual([A.number], numbers)
+        by_inst = {i: q for i, q in queries}
+        self.assertEqual(2, len(queries))
+        # Each query lists the configured projects of one installation.
+        org_repos = {n for n in conn.projects if n.startswith('org/')}
+        q1 = by_inst[inst['org/project1']]
+        self.assertEqual(set(re.findall(r'repo:(\S+)', q1)), org_repos)
+        self.assertEqual(
+            by_inst[inst['org2/projectx']],
+            'type:pr is:open label:"topic:t1" repo:org2/projectx')
+        self.assertNotIn('org:', q1)
+
+    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
+    def test_topic_search_chunks(self):
+        "More repositories than the limit are split into several queries"
+        conn = self._connection()
+        self.assertLessEqual(GithubConnection.TOPIC_SEARCH_MAX_REPOS, 21)
+        names = sorted(conn.projects.keys())
+        self.assertGreater(len(names), 2)
+        A = self._pr('org/project1', 'A', ['topic:t1'])
+        B = self._pr('org/project2', 'B', ['topic:t1'])
+        queries = self._recordSearches()
+
+        with mock.patch.object(GithubConnection,
+                               'TOPIC_SEARCH_MAX_REPOS', 2):
+            numbers = sorted(c.number for c in conn.getChangesByTopic('t1'))
+
+        self.assertEqual(sorted([A.number, B.number]), numbers)
+        repos = [re.findall(r'repo:(\S+)', q) for _, q in queries]
+        self.assertEqual(-(-len(names) // 2), len(queries))
+        self.assertTrue(all(len(r) <= 2 for r in repos))
+        # Every configured project is searched exactly once.
+        self.assertEqual(names, sorted(r for rs in repos for r in rs))
+
+    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
+    def test_topic_search_not_installed(self):
+        "A configured project without the App is logged and not searched"
+        conn = self._connection()
+        manager = conn._github_client_manager
+        A = self._pr('org/project1', 'A', ['topic:t1'])
+        C = self._pr('org/project3', 'C', ['topic:t1'])
+        queries = self._recordSearches()
+        # Pretend the App is not installed in project3.
+        manager.installation_map.pop('org/project3')
+
+        with self.assertLogs('zuul', 'WARNING') as logs:
+            numbers = sorted(c.number for c in conn.getChangesByTopic('t1'))
+
+        self.assertIn('org/project3', '\n'.join(logs.output))
+        self.assertEqual([A.number], numbers)
+        self.assertNotIn(C.number, numbers)
+        self.assertNotIn('org/project3', ' '.join(q for _, q in queries))
+
+    @simple_layout('layouts/github-topic-deps.yaml', driver='github')
+    def test_topic_api_token_mode(self):
+        "Topics need the GitHub App: with an api_token no set is built"
+        conn = self._connection()
+        manager = conn._github_client_manager
+        A = self._pr('org/project1', 'A', ['topic:t1'])
+        B = self._pr('org/project2', 'B', ['topic:t1'])
+        queries = self._recordSearches()
+
+        with mock.patch.object(manager, 'app_id', None):
+            with self.assertLogs('zuul', 'WARNING') as logs:
+                self.assertEqual([], conn.getChangesByTopic('t1'))
+            self.assertIn('GitHub App', '\n'.join(logs.output))
+            self.assertEqual([], queries)
+
+            # The dependency resolution goes on as usual, without a set.
+            self.fake_github.emitEvent(A.getPullRequestEditedEvent())
+            self.waitUntilSettled()
+
+        self.assertTrue(A.is_merged)
+        self.assertFalse(B.is_merged)
+        self.assertEqual(1, len(self.history))
 
     @simple_layout('layouts/github-topic-deps.yaml', driver='github')
     def test_topic_case_insensitive(self):
@@ -325,6 +443,10 @@ class TestGithubTopicLabelsDisabled(TestGithubTopicLabels):
     test_topic_case_insensitive = None
     test_topic_exact_match_not_prefix = None
     test_topic_exact_match_loose_search = None
+    test_topic_search_per_installation = None
+    test_topic_search_chunks = None
+    test_topic_search_not_installed = None
+    test_topic_api_token_mode = None
     test_topic_value_with_separator = None
     test_topic_different_topics = None
     test_topic_no_label = None

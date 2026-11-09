@@ -1386,18 +1386,29 @@ class FakeGithubClient(object):
             return re.match(r'[a-z0-9]{40}', s)
 
         label_match = re.match(
-            r'^type:pr is:open label:"((?:[^"\\]|\\.)*)" org:(\S+)$', query)
+            r'^type:pr is:open label:"((?:[^"\\]|\\.)*)" '
+            r'((?:org|repo):\S+(?: repo:\S+)*)$', query)
         if label_match:
             # Label search, as used for topic dependencies.  Like
             # GitHub, match the label name case-insensitively and
-            # restrict to open pull requests of the given owner.
+            # restrict to open pull requests of the given owner
+            # (org:) or of the given repositories (repo:, which are
+            # OR-ed).
             label = re.sub(r'\\(.)', r'\1', label_match.group(1)).lower()
-            owner = label_match.group(2)
+            owners = set()
+            repos = set()
+            for token in label_match.group(2).split(' '):
+                kind, _, value = token.partition(':')
+                if kind == 'org':
+                    owners.add(value)
+                else:
+                    repos.add(value)
             results = []
             for pr in self._data.pull_requests.values():
                 if pr.state != 'open':
                     continue
-                if pr.project.split('/')[0] != owner:
+                if (pr.project.split('/')[0] not in owners and
+                        pr.project not in repos):
                     continue
                 if label in [x.lower() for x in pr.labels]:
                     results.append(FakeIssueSearchResult(FakeIssue(pr)))

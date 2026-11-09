@@ -1307,6 +1307,12 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
         # default, which disables the feature for this connection.
         self.topic_label_marker = (
             self.connection_config.get('topic_label_marker') or None)
+        if self.topic_label_marker and not self.connection_config.get(
+                'app_id'):
+            self.log.warning(
+                "topic_label_marker is set on connection %s, but topics "
+                "need GitHub App authentication (app_id); no topic "
+                "dependencies will be built", self.connection_name)
 
         self._github_client_manager = self.client_manager_class(
             self.connection_config)
@@ -1587,15 +1593,65 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
 
     # GitHub's search API returns at most 1000 results per query.
     TOPIC_SEARCH_MAX_RESULTS = 1000
+    # Maximum number of repositories listed (as "repo:" qualifiers) in
+    # one search query.  One query with 21 of them (683 characters)
+    # was accepted by GitHub; stay below that, and do not raise this
+    # without measuring a larger query.
+    TOPIC_SEARCH_MAX_REPOS = 20
+
+    def _getTopicSearchGroups(self, log):
+        """Group the configured projects for the topic search
+
+        Returns a list of (project name used to get the client,
+        sorted project names), one per installation.  The search is
+        driven by the projects configured in Zuul for this
+        connection, in the repositories of one installation (one
+        token, one search rate limit) at a time: a query which lists
+        only repositories the token can not see fails, and invisible
+        ones mixed with visible ones are dropped silently.  A
+        configured project which is not in the installation map (the
+        App is not installed there) is not searched; it is logged.
+        """
+        installation_map = self._github_client_manager.installation_map
+        groups = {}
+        skipped = []
+        for name in self.projects.keys():
+            installation_id = installation_map.get(name)
+            if installation_id is None:
+                skipped.append(name)
+                continue
+            groups.setdefault(installation_id, []).append(name)
+        if skipped:
+            log.warning(
+                "Not searching for topic dependencies in %s: the GitHub "
+                "App is not installed in these configured projects",
+                ', '.join(sorted(skipped)))
+        return [(sorted(names)[0], sorted(names))
+                for _, names in sorted(groups.items(),
+                                       key=lambda x: str(x[0]))]
 
     def getChangesByTopic(self, topic, event=None):
         """Return the open pull requests which have the given topic
 
-        This uses the search API, scoped to the owners (organizations
-        or users) of the projects known to this connection.
+        Topics need GitHub App authentication: the search runs with
+        the installation tokens, one query per installation (and per
+        chunk of at most TOPIC_SEARCH_MAX_REPOS repositories) which
+        lists the configured projects of the connection in "repo:"
+        qualifiers.  With only an api_token no set is built (an empty
+        list is returned) and the dependency resolution goes on as
+        usual.
         """
         log = get_annotated_logger(self.log, event)
         if not topic or not self.topic_label_marker:
+            return []
+
+        if not self._github_client_manager.initialized:
+            self._github_client_manager.initialize()
+        if not self._github_client_manager.usesAppAuthentication:
+            log.warning(
+                "topic_label_marker is set, but topics need GitHub App "
+                "authentication (app_id); no topic dependencies are "
+                "built for connection %s", self.connection_name)
             return []
 
         label = self.topic_label_marker + topic
@@ -1604,51 +1660,44 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
         # compared again below, on the data of the pull requests.
         label_query = label.replace('\\', '\\\\').replace('"', '\\"')
 
-        # One query per owner, using the installation of one of that
-        # owner's projects.  Without scoping, the search would also
-        # return public pull requests of unrelated repositories.
-        client_projects = {}
-        project_names = list(
-            self._github_client_manager.installation_map.keys())
-        if not project_names:
-            project_names = list(self.projects.keys())
-        for project_name in sorted(project_names):
-            owner = project_name.split('/')[0]
-            client_projects.setdefault(owner, project_name)
-
         keys = []
         seen = set()
-        for owner, project_name in client_projects.items():
-            github = self.getGithubClient(project_name, zuul_event_id=event)
-            query = 'type:pr is:open label:"%s" org:%s' % (label_query, owner)
-            count = 0
-            for issue in github.search_issues(query=query):
-                count += 1
-                if count >= self.TOPIC_SEARCH_MAX_RESULTS:
-                    # Fail closed rather than gate on a partial set.
-                    raise Exception(
-                        "Too many results (%s) for topic query: %s" %
-                        (count, query))
-                pr = issue.issue.pull_request().as_dict()
-                if not pr.get('url'):
-                    continue
-                proj = pr.get('base').get('repo').get('full_name')
-                num = str(pr.get('number'))
-                sha = pr.get('head').get('sha')
-                # Only consider projects Zuul knows about.
-                if not self.getProject(proj):
-                    continue
-                # Check the labels of the data we just fetched
-                pr_labels = [lbl.get('name') for lbl in pr.get('labels', [])]
-                pr_topic = self.getTopicFromLabels(pr_labels, event=event)
-                if not pr_topic or pr_topic.casefold() != topic.casefold():
-                    continue
-                key = (proj, num, sha)
-                if key in seen:
-                    continue
-                seen.add(key)
-                keys.append(key)
-            log.debug("Ran search issues: %s", query)
+        for client_project, names in self._getTopicSearchGroups(log):
+            github = self.getGithubClient(client_project, zuul_event_id=event)
+            size = self.TOPIC_SEARCH_MAX_REPOS
+            for i in range(0, len(names), size):
+                repos = ' '.join('repo:%s' % n for n in names[i:i + size])
+                query = 'type:pr is:open label:"%s" %s' % (label_query, repos)
+                count = 0
+                for issue in github.search_issues(query=query):
+                    count += 1
+                    if count >= self.TOPIC_SEARCH_MAX_RESULTS:
+                        # Fail closed rather than gate on a partial set.
+                        raise Exception(
+                            "Too many results (%s) for topic query: %s" %
+                            (count, query))
+                    pr = issue.issue.pull_request().as_dict()
+                    if not pr.get('url'):
+                        continue
+                    proj = pr.get('base').get('repo').get('full_name')
+                    num = str(pr.get('number'))
+                    sha = pr.get('head').get('sha')
+                    # Only consider projects Zuul knows about.
+                    if not self.getProject(proj):
+                        continue
+                    # Check the labels of the data we just fetched
+                    pr_labels = [lbl.get('name')
+                                 for lbl in pr.get('labels', [])]
+                    pr_topic = self.getTopicFromLabels(pr_labels, event=event)
+                    if (not pr_topic or
+                            pr_topic.casefold() != topic.casefold()):
+                        continue
+                    key = (proj, num, sha)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    keys.append(key)
+                log.debug("Ran search issues: %s", query)
 
         changes = []
         for proj, num, sha in keys:

@@ -286,7 +286,8 @@ The supported options in ``zuul.conf`` connections are:
       same topic are treated as dependencies of each other in queues
       which set :attr:`queue.dependencies-by-topic`.  See
       :ref:`github_topic_dependencies`.  If unset (the default),
-      labels have no effect on dependencies.
+      labels have no effect on dependencies.  Topics need GitHub App
+      authentication (:attr:`<github connection>.app_id`).
 
    .. attr:: max_threads_per_installation
       :default: 1
@@ -659,6 +660,8 @@ Two things enable the feature, and both are off by default:
 
      [connection github]
      driver=github
+     app_id=<app id>
+     app_key=/etc/zuul/github-app.pem
      topic_label_marker=topic:
 
 * a queue which sets :attr:`queue.dependencies-by-topic` (and
@@ -696,22 +699,25 @@ Some points to be aware of:
   has that many pull requests, Zuul reports an error instead of
   using an incomplete set.  Only pull requests in projects configured
   in Zuul are considered.
-* The pull requests of a topic are searched for in the repositories
-  of the accounts (organizations or users) where the GitHub App is
-  installed, with the installation token of each account (one query
-  per account and label value).  If the connection uses only an
-  ``api_token``, the accounts of the projects configured in Zuul are
-  searched with that token.  Only pull requests in projects which are
-  configured in Zuul for this connection (in any tenant) are used.
-  Therefore a set can contain pull requests of several accounts, as
-  long as the App is installed on each of them: its reach is the
-  union of the installations of the App, and pull requests in
-  repositories which the token can not see (for example private
-  repositories of an account without an installation) are not found.
-  The reach is not limited to the projects of a single tenant.  The
-  search is the only source of the other pull requests of a topic:
-  the change cache which Zuul fills from webhook events is not used
-  for this, because it only keeps changes with recent activity.
+* Topics need GitHub App authentication (``app_id``); they do not
+  work with only an ``api_token``.  With an ``api_token`` no set is
+  built, the dependency resolution goes on as usual, and a warning is
+  logged if :attr:`<github connection>.topic_label_marker` is set.
+* The pull requests of a topic are searched for with the installation
+  tokens of the GitHub App: one query per installation, which lists
+  the projects configured in Zuul for this connection (in any tenant)
+  that are in the repositories of that installation (in chunks of at
+  most 20 repositories, so a large installation takes several
+  queries).  A configured project in which the App is not installed
+  is not searched, and is logged.  Therefore a set can contain pull
+  requests of several accounts, as long as the App is installed on
+  each of them: its reach is the union of the installations of the
+  App, and pull requests in repositories which the App can not see
+  are not found.  The reach is not limited to the projects of a
+  single tenant.  The search is the only source of the other pull
+  requests of a topic: the change cache which Zuul fills from webhook
+  events is not used for this, because it only keeps changes with
+  recent activity.
 * The GitHub search API has its own rate limit, separate from the
   rate limit of the rest of the API (30 requests per minute for
   authenticated requests at the time of writing).
