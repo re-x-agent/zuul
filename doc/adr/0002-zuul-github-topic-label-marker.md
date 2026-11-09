@@ -1,54 +1,54 @@
-# 0002 Zuul の GitHub ドライバが読む topic の形: marker 方式（`topic:` ＋ ラベル値）、完全一致、接続ごとの option（2026-11-09）
+# 0002 The form of the topic read by Zuul's GitHub driver: the marker form (`topic:` + label value), exact match, a per-connection option (2026-11-09)
 
-状態: **確定**（user 決定。2026-11-09 18:18〜20:03 の一連の判断。最終形は 2026-11-09 19:53 の定義確定による）。
-出典: `~/work-orders/zuul-topic-marker-rename.result.md`（最終形・名前の変更・定義確定）、`~/work-orders/zuul-topic-drop-prefix.result.md`（不採用の形の記録）、`~/work-orders/zuul-topic-exact-match.result.md`（完全一致の固定）、`~/work-orders/zuul-github-topic-proposal.draft.md`（Zuul への提案の下書き）。
-関連: ADR 0001（Topic は GitHub のラベルで付与する、という決定 1）。この ADR は、その Topic を Zuul の GitHub ドライバがどう読むかを定める。
+Status: **Decided** (user decision; a series of judgments from 2026-11-09 18:18 to 20:03; the final form follows the definition fixed on 2026-11-09 19:53).
+Sources: `~/work-orders/zuul-topic-marker-rename.result.md` (final form, the change of name, the fixed definition), `~/work-orders/zuul-topic-drop-prefix.result.md` (record of the form not adopted), `~/work-orders/zuul-topic-exact-match.result.md` (fixing exact match), `~/work-orders/zuul-github-topic-proposal.draft.md` (draft of the proposal to Zuul).
+Related: ADR 0001 (decision 1: a Topic is attached with a GitHub label). This ADR defines how Zuul's GitHub driver reads that Topic.
 
-## 背景
+## Background
 
-- GitHub には topic の欄が無い。Gerrit にある topic（変更を束ねる属性）に相当するものが GitHub には無く、Zuul の GitHub ドライバは `Depends-On:` しか依存宣言を読めない。
-- GitHub のラベルは**名前という1つの文字列だけ**である。「名前」と「値」に分かれた構造は GitHub には無い。したがって、ラベル `topic:release-1.4` を「`topic` という名前と `release-1.4` という値」と読むのは、**私たちのドライバの読み方の約束**であって、GitHub の仕様ではない。この約束を明示し、変えにくい形で固定する必要がある。
+- GitHub has no field for a topic. Nothing on GitHub corresponds to the topic that Gerrit has (an attribute that groups changes), and Zuul's GitHub driver can read only `Depends-On:` as a dependency declaration.
+- A GitHub label is **only one string, its name**. GitHub has no structure that splits a label into a "name" and a "value". Therefore, reading the label `topic:release-1.4` as "the name `topic` and the value `release-1.4`" is **a convention of how our driver reads it**, not a GitHub specification. This convention has to be made explicit and fixed in a form that is hard to change.
 
-## 決定
+## Decision
 
-### 1. 形は marker 方式（ラベル名＋セパレーター＋ラベル値）
-- ラベルは「ラベル名＋セパレーター（`:`）＋ラベル値」と読む。**marker ＝ ラベル名＋セパレーター**（設定値は `topic:`）。
-- topic は、marker の後ろの**ラベル値**（最初のセパレーターの後ろ、残り全部）。marker で始まらないラベルは topic ラベルではない。
-- marker の照合は大小無視（GitHub のラベル名に合わせる）。値は元の綴りで保持する。
+### 1. The form is the marker form (label name + separator + label value)
+- A label is read as "label name + separator (`:`) + label value". **marker = label name + separator** (the configured value is `topic:`).
+- The topic is the **label value** after the marker (everything after the first separator). A label that does not start with the marker is not a topic label.
+- The marker is matched case-insensitively (in line with GitHub label names). The value keeps its original spelling.
 
-### 2. 照合は値の完全一致だけ
-- 同じ topic かどうかは、ラベル値が**完全一致**するかどうかだけで決める。前方一致・部分一致・近さの段階は使わない。
-- 理由: `1` と `11` が混ざってはいけない（前方一致だと `topic:1` の組に `topic:11` が入る）。一致したものがあるかどうかしか見ない、という単純さを保つ。
-- 実装上の保証: Search の結果は、各 PR のラベルから topic を導出し直して要求した topic と完全一致するものだけ残す（Search 側が緩くても混ざらない）。
+### 2. Matching is exact match of the value only
+- Whether two pull requests have the same topic is decided only by whether the label values **match exactly**. Prefix matching, partial matching and degrees of closeness are not used.
+- Reason: `1` and `11` must not be mixed (with prefix matching, `topic:11` would join the set of `topic:1`). The simplicity of looking only at whether there is a match is kept.
+- Guarantee in the implementation: each Search result has its topic derived again from the labels of the pull request, and only the results that match the requested topic exactly are kept (nothing is mixed even if the Search side is loose).
 
-### 3. 設定は GitHub 接続ごとの option に置く
-- `zuul.conf` の GitHub 接続節の `topic_label_marker`（既定なし＝無効）。有効化はこの option に加え、既存の queue の `dependencies-by-topic`（＋`allow-circular-dependencies`）。
-- 理由: ラベルをどう読むかという約束は**接続（GitHub という外部の系）の境界に置くもの**で、テナントやジョブの設定ではない。同じ GitHub で同じ読み方が全テナントに及ぶ。
+### 3. The setting is an option of each GitHub connection
+- `topic_label_marker` in the GitHub connection section of `zuul.conf` (no default = disabled). Enabling needs this option plus the existing queue setting `dependencies-by-topic` (and `allow-circular-dependencies`).
+- Reason: the convention of how labels are read belongs **at the boundary of the connection (the external system, GitHub)**; it is not a setting of a tenant or a job. The same reading applies to all tenants on the same GitHub.
 
-### 4. 用語は marker とする
-- option 名は `topic_label_marker`、この仕組みを指す語は marker（設定値 `topic:` は、ラベル名＋セパレーター）。
-- 理由: marker は、**ラベル名とラベル値の境目を示す目印**である、という実態をそのまま表す名前だから採用した。
+### 4. The term is marker
+- The option is named `topic_label_marker`, and the word for this mechanism is marker (the configured value `topic:` is the label name + separator).
+- Reason: it was adopted because marker is a name that directly expresses what it is, **a mark that shows the boundary between the label name and the label value**.
 
-## 採用しなかった案と理由
+## Alternatives not adopted, and why
 
-- **設定なし・ラベル名そのものが topic（共有ラベルで組になる）**: 実装とテスト（topic テスト 13/13 合格）まで進め、fork にも載せたが、不採用。どのラベル（例えば `bug`）でも組ができてしまい、意図しない PR 同士が1つの組として gate されるため。user が marker 方式へ戻す決定をした（2026-11-09 19:36）。
-- **topic のラベル名を設定に列挙する形**: 不採用。設定に列挙したくないという user の意向（「設定はしたくない」）。
-- **prefix という名前（「prefix」という呼び方）**: 採用しなかった。prefix は前方一致の照合を連想させ、照合が完全一致であるという実態と食い違う。「prefix なら前方一致で組になるのか」という誤解が繰り返し起きた。
+- **No setting; the label name itself is the topic (pull requests that share a label form a set)**: implemented and taken as far as tests (topic tests 13/13 passing) and put on the fork, but not adopted. Any label (for example `bug`) would form a set, so unrelated pull requests would be gated together as one set. The user decided to return to the marker form (2026-11-09 19:36).
+- **Listing the label names of topics in the configuration**: not adopted. It is the user's wish not to list them in the configuration ("I do not want to configure it").
+- **The name "prefix" (calling it a "prefix")**: not adopted. "prefix" suggests prefix matching, which disagrees with the fact that matching is exact. The misunderstanding "if it is a prefix, do pull requests form a set by prefix match?" occurred repeatedly.
 
-## 帰結
+## Consequences
 
-- `topic:a:b` のラベル値は `a:b`（最初のセパレーターで割り、値は残り全部）。`topic:a` と `topic:a:b` は別の topic で組にならない。専用テスト（`test_topic_value_with_separator`）で固定済み。
-- 番号の桁揃え（`topic:01` と `topic:1` を同じにしたい等）は**人側の注意**であって、機械の照合は表記によらず混ざらない（完全一致のため、別の値として扱われる）。
-- 試行（`aether-zuul-01`）は `zuul-scheduler-topic:14.3.0-topic3` と `topic_label_marker=topic:` で稼働中。
-- 残る論点（下書きの Open questions に記載）: 複数の topic ラベルを持つ PR（現状は辞書順で最小の1つを採用）、Search の反映遅延（実測 5.6〜10.7 秒、n=5）、待機中の組の増減時の再投入。
+- The label value of `topic:a:b` is `a:b` (split at the first separator; the value is everything that remains). `topic:a` and `topic:a:b` are different topics and do not form a set. This is fixed by a dedicated test (`test_topic_value_with_separator`).
+- Aligning the digits of numbers (for example wanting `topic:01` and `topic:1` to be the same) is **something for people to take care of**; the matching by the machine does not mix them whatever the notation (they are treated as different values because matching is exact).
+- The trial (`aether-zuul-01`) is running with `zuul-scheduler-topic:14.3.0-topic3` and `topic_label_marker=topic:`.
+- Remaining points (described in Open questions of the draft): pull requests with several topic labels (currently the lexicographically smallest one is used), the delay until Search reflects a label (measured 5.6 to 10.7 seconds, n=5), and re-enqueueing when the members of a queued set increase or decrease.
 
-### 見通し（可能性の記録。実装の決定ではない）
+### Outlook (a record of possibilities; not an implementation decision)
 
-- 区切りをセパレーターで持つ形にしたため、将来、**値の側に拡張の余地**が残る（例えば、1つのラベルが複数の値を持つマルチバリュー）。
-- これは可能性の記録であって、**実装の決定ではない**。現行形は変わらず、「最初のセパレーターの後ろ全部が1つの値で、照合は完全一致」である（`topic:a:b` の値は `a:b`。値の中のセパレーターに特別な意味は無い）。拡張するかどうか、するならどの形かは、別途の決定とする。
+- Because the boundary is expressed by a separator, **room for extension remains on the value side** in the future (for example multi-value, where one label has several values).
+- This is a record of a possibility and **not an implementation decision**. The current form does not change: "everything after the first separator is one value, and matching is exact match" (the value of `topic:a:b` is `a:b`; a separator inside the value has no special meaning). Whether to extend it, and in what form, is left to a separate decision.
 
-## 証跡
+## Evidence
 
-- 実走検証: 2026-11-09 16:40、marker 方式の試作で、3 repo（web #24・mobile #563・resolver #124）の PR に同じ topic ラベルを付け、`gate_dev` が1つの組に合成して完走した（buildset `8882b07bf2b7496aa4610a983b79b243`）。当時の option 名は `topic_label_prefix`（改名のみで挙動不変）。
-- fork（証跡用コピー、Zuul 14.3.0 基点）: https://github.com/re-x-agent/zuul/compare/14.3.0...topic-label-deps
-- テスト: `tests/unit/test_github_topic.py`（topic テスト 14 件合格。`1` と `11`、緩い Search、値に `:` を含むラベル等）。
+- Verification run: on 2026-11-09 16:40, with the prototype of the marker form, the same topic label was put on pull requests in 3 repositories (web #24, mobile #563, resolver #124), and `gate_dev` combined them into one set and ran it to completion (buildset `8882b07bf2b7496aa4610a983b79b243`). The option was then named `topic_label_prefix` (only the name changed afterwards; the behavior is unchanged).
+- Fork (a copy for evidence, based on Zuul 14.3.0): https://github.com/re-x-agent/zuul/compare/14.3.0...topic-label-deps
+- Tests: `tests/unit/test_github_topic.py` (14 topic tests pass; `1` and `11`, a loose Search, labels whose value contains `:`, and others).
