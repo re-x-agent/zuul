@@ -269,9 +269,9 @@ The supported options in ``zuul.conf`` connections are:
       as one set, and with this option pull requests with the same
       topic are handled as one set too.  It sets the marker which
       identifies a pull request label as a *topic* label.  A label is
-      read as a *label name*, a *separator* (``:``)
-      and a *label value*.  The marker is the label name plus the
-      separator, for example ``topic:``.  A label which starts with
+      read as a *label name*, a *separator* (``:``) and a *label
+      value*.  The marker is the label name plus the separator, for
+      example ``topic:``.  A label which starts with
       the marker (compared case-insensitively) is a topic label, and
       the label value, which is everything after the marker, is the
       topic.  For example, with ``topic_label_marker=topic:`` the
