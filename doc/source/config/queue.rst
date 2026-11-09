@@ -145,6 +145,11 @@ Here is an example ``queue`` configuration.
       approximate the Gerrit behavior only for changes enqueued into
       queues where this is set.
 
+      With the GitHub driver, a topic is read from pull request
+      labels when the connection option
+      :attr:`<github connection>.topic_label_marker` is set; see
+      :ref:`github_topic_dependencies`.
+
       This setting requires :attr:`queue.allow-circular-dependencies`
       to also be set.  All of the caveats noted there continue to
       apply.

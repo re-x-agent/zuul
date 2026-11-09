@@ -261,6 +261,34 @@ The supported options in ``zuul.conf`` connections are:
       git fetches every 30 seconds, and this value will be rounded up
       to the next highest multiple of 30 seconds.
 
+   .. attr:: topic_label_marker
+      :default: None
+
+      The purpose of this option is to treat pull requests the way
+      Gerrit treats changes: changes with the same topic are handled
+      as one set, and with this option pull requests with the same
+      topic are handled as one set too.  It sets the marker which
+      identifies a pull request label as a *topic* label.  A label is
+      read as a *label name*, a *separator* (``:``) and a *label
+      value*.  The marker is the label name plus the separator, for
+      example ``topic:``.  A label which starts with
+      the marker (compared case-insensitively) is a topic label, and
+      the label value, which is everything after the marker, is the
+      topic.  For example, with ``topic_label_marker=topic:`` the
+      label ``topic:release-1.4`` puts a pull request in the topic
+      ``release-1.4``.
+
+      Topics are compared by exact match of the label value (ignoring
+      case, like GitHub label names), never by prefix: ``1`` and
+      ``11`` are different topics.
+
+      Pull requests of this connection which are open and have the
+      same topic are treated as dependencies of each other in queues
+      which set :attr:`queue.dependencies-by-topic`.  See
+      :ref:`github_topic_dependencies`.  If unset (the default),
+      labels have no effect on dependencies.  Topics need GitHub App
+      authentication (:attr:`<github connection>.app_id`).
+
    .. attr:: max_threads_per_installation
       :default: 1
 
@@ -604,6 +632,112 @@ itself. Status name, description, and context is taken from the pipeline.
       List of strings each representing an exact label name which
       should be removed from the pull request by reporter. Only used
       for Pull Request based items.
+
+.. _github_topic_dependencies:
+
+Topic dependencies
+------------------
+
+Gerrit changes which share a topic are handled as one set.  The aim of
+topic dependencies for GitHub is to give pull requests the same
+treatment: pull requests with the same topic are handled as one set,
+as changes in the same Gerrit topic are.  GitHub has no built-in
+notion of a topic, but labels can serve as one.  GitHub does not
+split a label into parts, so Zuul reads a label by convention as a
+*label name*, a *separator* (``:``) and a *label value*; the label ``topic:release-1.4`` has the name ``topic`` and the
+value ``release-1.4``.  The connection option
+:attr:`<github connection>.topic_label_marker` (the label name plus
+the separator, for example ``topic:``) says which labels carry a
+topic; the label value is the topic.  The first separator ends the
+marker, and everything after it is the value, which may itself contain
+``:`` (``topic:a:b`` has the value ``a:b``).
+
+Two things enable the feature, and both are off by default:
+
+* the connection option, in ``zuul.conf``:
+
+  .. code-block:: ini
+
+     [connection github]
+     driver=github
+     app_id=<app id>
+     app_key=/etc/zuul/github-app.pem
+     topic_label_marker=topic:
+
+* a queue which sets :attr:`queue.dependencies-by-topic` (and
+  :attr:`queue.allow-circular-dependencies`):
+
+  .. code-block:: yaml
+
+     - queue:
+         name: integrated
+         allow-circular-dependencies: true
+         dependencies-by-topic: true
+
+Then all open pull requests of the connection that have the same topic
+are treated as a set of circular dependencies, just as changes in the
+same Gerrit topic are.  Topics are compared by exact match of the
+label value, ignoring case; there is no prefix or partial matching.
+This can be combined with ``Depends-On:`` footers; the dependencies of
+both kinds are added together.
+
+Labels define the set; they are not a pipeline trigger.  A pull
+request enters a pipeline through the triggers configured for it, as
+usual.  Adding or removing a topic label on a pull request
+re-evaluates the other pull requests of that topic which are already
+in a pipeline: an item whose set changes is dequeued, and the set is
+formed again at the next trigger event.
+
+Some points to be aware of:
+
+* Zuul models one topic per pull request.  If a pull request has more
+  than one topic label, the topic which sorts first (ignoring case) is
+  used and a warning is logged.
+* Pull requests are found with the GitHub search API, which is subject
+  to its own rate limit, may take a short time to reflect a newly
+  added label, and returns at most 1000 results per query.  If a topic
+  has that many pull requests, Zuul reports an error instead of
+  using an incomplete set.  Only pull requests in projects configured
+  in Zuul are considered.
+* Topics need GitHub App authentication (``app_id``); they do not
+  work with only an ``api_token``.  With an ``api_token`` no set is
+  built, the dependency resolution goes on as usual, and a warning is
+  logged if :attr:`<github connection>.topic_label_marker` is set.
+* The pull requests of a topic are searched for with the installation
+  tokens of the GitHub App: one query per installation, which lists
+  the projects configured in Zuul for this connection (in any tenant)
+  that are in the repositories of that installation (in chunks of at
+  most 20 repositories, so a large installation takes several
+  queries).  A configured project in which the App is not installed
+  is not searched, and is logged.  Therefore a set can contain pull
+  requests of several accounts, as long as the App is installed on
+  each of them: its reach is the union of the installations of the
+  App, and pull requests in repositories which the App can not see
+  are not found.  The reach is not limited to the projects of a
+  single tenant.  The search is the only source of the other pull
+  requests of a topic: the change cache which Zuul fills from webhook
+  events is not used for this, because it only keeps changes with
+  recent activity.
+* The GitHub search API has its own rate limit, separate from the
+  rate limit of the rest of the API (30 requests per minute for
+  authenticated requests at the time of writing).
+* Labels belong to a repository: a topic label must exist in each
+  repository whose pull requests are to be in the topic.  Pull
+  requests of different repositories are in the same topic only if
+  their label values are identical.
+* The topic of a pull request is available to jobs as the
+  ``topic`` of the change, as for other drivers (see
+  :ref:`job-content`).  Draft pull requests are open pull requests
+  and are found by the search; use the
+  :attr:`pipeline.require.<github source>.draft` requirement if they
+  should not be enqueued.
+* The ``labeled`` and ``unlabeled`` events must be delivered to Zuul
+  (the ``pull_request`` event of the GitHub App or webhook) for the
+  other pull requests of a topic to be re-evaluated when a label
+  changes.
+* This only affects dependency resolution.  GitHub can not merge
+  several pull requests atomically, so the caveats noted at
+  :attr:`queue.allow-circular-dependencies` apply.
 
 .. _Github App: https://developer.github.com/apps/
 

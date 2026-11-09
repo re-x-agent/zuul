@@ -525,9 +525,11 @@ class GithubEventProcessor(object):
         elif action == 'labeled':
             event.action = 'labeled'
             event.label = self.body['label']['name']
+            event.topic_changed = self.connection.isTopicLabel(event.label)
         elif action == 'unlabeled':
             event.action = 'unlabeled'
             event.label = self.body['label']['name']
+            event.topic_changed = self.connection.isTopicLabel(event.label)
         elif action == 'edited':
             event.action = 'edited'
             if 'body' in self.body.get('changes', {}):
@@ -1300,6 +1302,18 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
         self.max_threads_per_installation = int(self.connection_config.get(
             'max_threads_per_installation', 1))
 
+        # Optional: labels starting with this marker (case-insensitive)
+        # are read as a "topic" for dependencies-by-topic.  Unset by
+        # default, which disables the feature for this connection.
+        self.topic_label_marker = (
+            self.connection_config.get('topic_label_marker') or None)
+        if self.topic_label_marker and not self.connection_config.get(
+                'app_id'):
+            self.log.warning(
+                "topic_label_marker is set on connection %s, but topics "
+                "need GitHub App authentication (app_id); no topic "
+                "dependencies will be built", self.connection_name)
+
         self._github_client_manager = self.client_manager_class(
             self.connection_config)
 
@@ -1544,6 +1558,155 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
             change = self._change_cache.get(change_key)
         return change
 
+    def isTopicLabel(self, label):
+        """Return whether a label name is a topic label."""
+        marker = self.topic_label_marker
+        if not marker or not label:
+            return False
+        return (label.casefold().startswith(marker.casefold()) and
+                len(label) > len(marker))
+
+    def getTopicFromLabels(self, labels, event=None):
+        """Return the topic of a pull request with the given labels
+
+        The topic is the remainder of the name of a label which starts
+        with the connection's topic_label_marker.  Zuul models a
+        single topic per change; if more than one topic label is
+        present, the lexicographically smallest topic (compared
+        case-insensitively) is used and a warning is logged.
+
+        Returns None if the feature is not enabled or no label matches.
+        """
+        log = get_annotated_logger(self.log, event)
+        if not self.topic_label_marker:
+            return None
+        topics = sorted(
+            {label[len(self.topic_label_marker):]
+             for label in (labels or []) if self.isTopicLabel(label)},
+            key=lambda t: (t.casefold(), t))
+        if not topics:
+            return None
+        if len(topics) > 1:
+            log.warning("Multiple topic labels found (%s), using %s",
+                        topics, topics[0])
+        return topics[0]
+
+    # GitHub's search API returns at most 1000 results per query.
+    TOPIC_SEARCH_MAX_RESULTS = 1000
+    # Maximum number of repositories listed (as "repo:" qualifiers) in
+    # one search query.  One query with 21 of them (683 characters)
+    # was accepted by GitHub; stay below that, and do not raise this
+    # without measuring a larger query.
+    TOPIC_SEARCH_MAX_REPOS = 20
+
+    def _getTopicSearchGroups(self, log):
+        """Group the configured projects for the topic search
+
+        Returns a list of (project name used to get the client,
+        sorted project names), one per installation.  The search is
+        driven by the projects configured in Zuul for this
+        connection, in the repositories of one installation (one
+        token, one search rate limit) at a time: a query which lists
+        only repositories the token can not see fails, and invisible
+        ones mixed with visible ones are dropped silently.  A
+        configured project which is not in the installation map (the
+        App is not installed there) is not searched; it is logged.
+        """
+        installation_map = self._github_client_manager.installation_map
+        groups = {}
+        skipped = []
+        for name in self.projects.keys():
+            installation_id = installation_map.get(name)
+            if installation_id is None:
+                skipped.append(name)
+                continue
+            groups.setdefault(installation_id, []).append(name)
+        if skipped:
+            log.warning(
+                "Not searching for topic dependencies in %s: the GitHub "
+                "App is not installed in these configured projects",
+                ', '.join(sorted(skipped)))
+        return [(sorted(names)[0], sorted(names))
+                for _, names in sorted(groups.items(),
+                                       key=lambda x: str(x[0]))]
+
+    def getChangesByTopic(self, topic, event=None):
+        """Return the open pull requests which have the given topic
+
+        Topics need GitHub App authentication: the search runs with
+        the installation tokens, one query per installation (and per
+        chunk of at most TOPIC_SEARCH_MAX_REPOS repositories) which
+        lists the configured projects of the connection in "repo:"
+        qualifiers.  With only an api_token no set is built (an empty
+        list is returned) and the dependency resolution goes on as
+        usual.
+        """
+        log = get_annotated_logger(self.log, event)
+        if not topic or not self.topic_label_marker:
+            return []
+
+        if not self._github_client_manager.initialized:
+            self._github_client_manager.initialize()
+        if not self._github_client_manager.usesAppAuthentication:
+            log.warning(
+                "topic_label_marker is set, but topics need GitHub App "
+                "authentication (app_id); no topic dependencies are "
+                "built for connection %s", self.connection_name)
+            return []
+
+        label = self.topic_label_marker + topic
+        # The search API has no way to match a label prefix and
+        # matches the label name case-insensitively; the topic is
+        # compared again below, on the data of the pull requests.
+        label_query = label.replace('\\', '\\\\').replace('"', '\\"')
+
+        keys = []
+        seen = set()
+        for client_project, names in self._getTopicSearchGroups(log):
+            github = self.getGithubClient(client_project, zuul_event_id=event)
+            size = self.TOPIC_SEARCH_MAX_REPOS
+            for i in range(0, len(names), size):
+                repos = ' '.join('repo:%s' % n for n in names[i:i + size])
+                query = 'type:pr is:open label:"%s" %s' % (label_query, repos)
+                count = 0
+                for issue in github.search_issues(query=query):
+                    count += 1
+                    if count >= self.TOPIC_SEARCH_MAX_RESULTS:
+                        # Fail closed rather than gate on a partial set.
+                        raise Exception(
+                            "Too many results (%s) for topic query: %s" %
+                            (count, query))
+                    pr = issue.issue.pull_request().as_dict()
+                    if not pr.get('url'):
+                        continue
+                    proj = pr.get('base').get('repo').get('full_name')
+                    num = str(pr.get('number'))
+                    sha = pr.get('head').get('sha')
+                    # Only consider projects Zuul knows about.
+                    if not self.getProject(proj):
+                        continue
+                    # Check the labels of the data we just fetched
+                    pr_labels = [lbl.get('name')
+                                 for lbl in pr.get('labels', [])]
+                    pr_topic = self.getTopicFromLabels(pr_labels, event=event)
+                    if (not pr_topic or
+                            pr_topic.casefold() != topic.casefold()):
+                        continue
+                    key = (proj, num, sha)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    keys.append(key)
+                log.info("Ran search issues for topic %s: %s", topic, query)
+
+        changes = []
+        for proj, num, sha in keys:
+            change_key = ChangeKey(self.connection_name, proj,
+                                   'PullRequest', num, sha)
+            log.debug("Found PR %s/%s with topic %s", proj, num, topic)
+            changes.append(self._getChange(change_key, event=event))
+        return changes
+
     def getChangesDependingOn(self, change, projects, tenant):
         changes = []
         if not change.uris:
@@ -1654,6 +1817,7 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
         change.reviews = self.getPullReviews(
             pr_obj, change.project, change.number, event)
         change.labels = change.pr.get('labels')
+        change.topic = self.getTopicFromLabels(change.labels, event=event)
         # ensure message is at least an empty string
         message = change.pr.get("body") or ""
         if change.title:

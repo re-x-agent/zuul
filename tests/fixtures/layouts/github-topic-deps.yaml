@@ -1,0 +1,71 @@
+- queue:
+    name: integrated
+    allow-circular-dependencies: true
+    dependencies-by-topic: true
+
+- pipeline:
+    name: check
+    manager: independent
+    trigger:
+      github:
+        - event: pull_request
+          action: edited
+    start:
+      github: {}
+    success:
+      github: {}
+    failure:
+      github: {}
+
+- pipeline:
+    name: gate
+    manager: dependent
+    trigger:
+      github:
+        - event: pull_request
+          action: edited
+    start:
+      github: {}
+    success:
+      github:
+        merge: true
+    failure:
+      github: {}
+
+- job:
+    name: base
+    parent: null
+    run: playbooks/base.yaml
+
+- job:
+    name: project1-test
+    run: playbooks/project1-test.yaml
+
+- job:
+    name: project2-test
+    run: playbooks/project2-test.yaml
+
+- job:
+    name: project3-test
+    run: playbooks/project3-test.yaml
+
+- project:
+    name: org/project1
+    queue: integrated
+    gate:
+      jobs:
+        - project1-test
+
+- project:
+    name: org/project2
+    queue: integrated
+    gate:
+      jobs:
+        - project2-test
+
+- project:
+    name: org/project3
+    queue: integrated
+    gate:
+      jobs:
+        - project3-test
