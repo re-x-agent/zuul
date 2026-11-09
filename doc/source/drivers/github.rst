@@ -261,6 +261,21 @@ The supported options in ``zuul.conf`` connections are:
       git fetches every 30 seconds, and this value will be rounded up
       to the next highest multiple of 30 seconds.
 
+   .. attr:: topic_label_prefix
+      :default: None
+
+      If set, a pull request label whose name starts with this prefix
+      (compared case-insensitively) is read as a *topic*: the rest of
+      the label name is the topic.  For example, with
+      ``topic_label_prefix=topic:`` the label ``topic:release-1.4``
+      puts a pull request in the topic ``release-1.4``.
+
+      Pull requests of this connection which are open and have the
+      same topic are treated as dependencies of each other in queues
+      which set :attr:`queue.dependencies-by-topic`.  See
+      :ref:`github_topic_dependencies`.  If unset (the default),
+      labels have no effect on dependencies.
+
    .. attr:: max_threads_per_installation
       :default: 1
 
@@ -604,6 +619,38 @@ itself. Status name, description, and context is taken from the pipeline.
       List of strings each representing an exact label name which
       should be removed from the pull request by reporter. Only used
       for Pull Request based items.
+
+.. _github_topic_dependencies:
+
+Topic dependencies
+------------------
+
+GitHub has no built-in notion of a topic, but labels can serve as
+one.  When the connection option :attr:`<github connection>.topic_label_prefix`
+is set, and a queue sets :attr:`queue.dependencies-by-topic` (and
+:attr:`queue.allow-circular-dependencies`), all open pull requests of
+the connection that carry the same topic label are treated as a set of
+circular dependencies, just as changes in the same Gerrit topic are.
+This can be combined with ``Depends-On:`` footers; the dependencies of
+both kinds are added together.
+
+Adding or removing a topic label on a pull request re-evaluates the
+other pull requests of that topic which are already in a pipeline.
+
+Some points to be aware of:
+
+* Zuul models one topic per pull request.  If a pull request has more
+  than one topic label, the topic which sorts first (ignoring case) is
+  used and a warning is logged.
+* Pull requests are found with the GitHub search API, which is subject
+  to its own rate limit, may take a short time to reflect a newly
+  added label, and returns at most 1000 results per query.  If a topic
+  has that many pull requests, Zuul reports an error instead of
+  using an incomplete set.  Only pull requests in projects configured
+  in Zuul are considered.
+* This only affects dependency resolution.  GitHub can not merge
+  several pull requests atomically, so the caveats noted at
+  :attr:`queue.allow-circular-dependencies` apply.
 
 .. _Github App: https://developer.github.com/apps/
 

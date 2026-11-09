@@ -2793,7 +2793,8 @@ class Scheduler(threading.Thread):
         # refreshing if this change has updated.  Do this before
         # removing old versions so that we have the latest information
         # for the whole dependency cycle when we enqueue.
-        if event.isPatchsetCreated() or event.isMessageChanged():
+        if (event.isPatchsetCreated() or event.isMessageChanged()
+                or event.isTopicChanged()):
             manager.refreshDeps(change, event)
 
         if event.isPatchsetCreated():

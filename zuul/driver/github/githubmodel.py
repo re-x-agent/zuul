@@ -119,6 +119,7 @@ class GithubTriggerEvent(TriggerEvent):
         self.status = None
         self.commits = []
         self.body_edited = None
+        self.topic_changed = None
         self.branch_protection_changed = None
         self.default_branch_changed = None
 
@@ -134,6 +135,7 @@ class GithubTriggerEvent(TriggerEvent):
         d["status"] = self.status
         d["commits"] = self.commits
         d["body_edited"] = self.body_edited
+        d["topic_changed"] = self.topic_changed
         d["branch_protection_changed"] = self.branch_protection_changed
         d["default_branch_changed"] = self.default_branch_changed
         return d
@@ -150,6 +152,7 @@ class GithubTriggerEvent(TriggerEvent):
         self.status = d["status"]
         self.commits = d["commits"]
         self.body_edited = d["body_edited"]
+        self.topic_changed = d.get("topic_changed")
         self.branch_protection_changed = d.get("branch_protection_changed")
         self.default_branch_changed = d.get("default_branch_changed")
 
@@ -166,6 +169,9 @@ class GithubTriggerEvent(TriggerEvent):
 
     def isMessageChanged(self):
         return bool(self.body_edited)
+
+    def isTopicChanged(self):
+        return bool(self.topic_changed)
 
     def isChangeAbandoned(self):
         if self.type == 'pull_request':

@@ -1,0 +1,12 @@
+---
+features:
+  - |
+    The GitHub driver can now read a topic from pull request labels.
+    If the new connection option
+    :attr:`<github connection>.topic_label_prefix` is set, labels
+    with that prefix define the topic of a pull request, and queues
+    which set :attr:`queue.dependencies-by-topic` treat open pull
+    requests with the same topic as circular dependencies.  Adding or
+    removing a topic label re-evaluates pull requests of that topic
+    which are already queued.  The option is unset by default, which
+    leaves existing behavior unchanged.

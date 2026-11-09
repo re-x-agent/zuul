@@ -1385,6 +1385,24 @@ class FakeGithubClient(object):
         def query_is_sha(s):
             return re.match(r'[a-z0-9]{40}', s)
 
+        label_match = re.match(
+            r'^type:pr is:open label:"((?:[^"\\]|\\.)*)" org:(\S+)$', query)
+        if label_match:
+            # Label search, as used for topic dependencies.  Like
+            # GitHub, match the label name case-insensitively and
+            # restrict to open pull requests of the given owner.
+            label = re.sub(r'\\(.)', r'\1', label_match.group(1)).lower()
+            owner = label_match.group(2)
+            results = []
+            for pr in self._data.pull_requests.values():
+                if pr.state != 'open':
+                    continue
+                if pr.project.split('/')[0] != owner:
+                    continue
+                if label in [x.lower() for x in pr.labels]:
+                    results.append(FakeIssueSearchResult(FakeIssue(pr)))
+            return iter(results)
+
         if query_is_sha(query):
             # Github returns all PR's that contain the sha in their history
             result = []

@@ -9667,6 +9667,11 @@ class TriggerEvent(AbstractEvent):
     def isMessageChanged(self):
         return False
 
+    def isTopicChanged(self):
+        # True if this event adds or removes a change from a topic
+        # without otherwise updating it (e.g., a label change).
+        return False
+
     def isChangeAbandoned(self):
         return False
 
