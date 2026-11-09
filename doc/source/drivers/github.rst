@@ -264,11 +264,15 @@ The supported options in ``zuul.conf`` connections are:
    .. attr:: topic_label_marker
       :default: None
 
-      If set, a pull request label whose name starts with this marker
-      (compared case-insensitively) is read as a *topic*: the rest of
-      the label name is the topic.  For example, with
-      ``topic_label_marker=topic:`` the label ``topic:release-1.4``
-      puts a pull request in the topic ``release-1.4``.
+      A label is read as a *label name*, a *separator* and a *label
+      value*.  The marker is the label name plus the separator (for
+      example ``topic:``).  If set, a pull request label which starts
+      with the marker (compared case-insensitively) is read as a
+      *topic*: the label value, which is everything after the marker,
+      is the topic.  For example, with ``topic_label_marker=topic:``
+      the label ``topic:release-1.4`` puts a pull request in the topic
+      ``release-1.4``.  Topics are compared by exact match of the
+      label value, never by prefix.
 
       Pull requests of this connection which are open and have the
       same topic are treated as dependencies of each other in queues
