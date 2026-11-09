@@ -1,0 +1,116 @@
+# Stop the basic tutorial
+- name: Run docker compose down
+  when: not local
+  shell:
+    cmd: docker compose -p zuul-tutorial stop
+    chdir: src/opendev.org/zuul/zuul/doc/source/examples
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+
+- name: Run docker compose down
+  when: local
+  shell:
+    cmd: docker compose -p zuul-tutorial stop
+    chdir: ../../doc/source/examples
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+
+# Restart with the new config
+- name: Run docker compose up
+  when: not local
+  shell:
+    cmd: docker compose -p zuul-tutorial up -d
+    chdir: src/opendev.org/zuul/zuul/doc/source/examples
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+    ZUUL_TUTORIAL_CONFIG: "./tracing/etc_zuul/"
+
+- name: Run docker compose up
+  when: local
+  shell:
+    cmd: docker compose -p zuul-tutorial up -d
+    chdir: ../../doc/source/examples
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+    ZUUL_TUTORIAL_CONFIG: "./tracing/etc_zuul/"
+
+# Start Jaeger
+- name: Run docker compose up
+  when: not local
+  shell:
+    cmd: docker compose -p zuul-tutorial-tracing up -d
+    chdir: src/opendev.org/zuul/zuul/doc/source/examples/tracing
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+
+- name: Run docker compose up
+  when: local
+  shell:
+    cmd: docker compose -p zuul-tutorial-tracing up -d
+    chdir: ../../doc/source/examples/tracing
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+
+# In case ZK is shutdown first, allow the locks to expire.
+- name: Delay for ZK lock expiration
+  wait_for:
+    timeout: 30
+  delegate_to: localhost
+
+# Verify that Zuul runs with the new config
+- name: Wait for Zuul
+  uri:
+    url: http://localhost:9000/api/components
+    method: GET
+    return_content: true
+    status_code: 200
+    body_format: json
+  register: result
+  retries: 30
+  delay: 10
+  until: result.status == 200 and (result.json["scheduler"]|length == 1) and result.json["scheduler"][0]['state'] == 'running'
+  changed_when: false
+
+- name: Verify that old builds are available
+  uri:
+    url: "http://localhost:9000/api/tenant/example-tenant/builds"
+    method: GET
+    return_content: true
+    status_code: 200
+    body_format: json
+  register: result
+  failed_when: "result.json | length < 4"
+  changed_when: false
+
+# Remove the label so Zuul will post again Verified+1 which is what
+# check-pipeline is looking for
+- include_role:
+    name: remove-verified
+  vars:
+    change_id: "{{ changetest1.id }}"
+
+# Recheck the change to issue a trace
+- include_role:
+    name: recheck-change
+  vars:
+    change_id: "{{ changetest1.id }}"
+
+- include_role:
+    name: check-pipeline
+  vars:
+    title: "test job test1"
+    projectname: test1
+    check_number: 3
+
+- name: Verify tracing information is available
+  uri:
+    url: http://localhost:16686/api/traces?lookback=1h&service=zuul
+    method: GET
+    return_content: true
+    status_code: 200
+    body_format: json
+  register: result
+  retries: 30
+  delay: 10
+  until: result.status == 200 and result.json["data"] | length > 0
+  changed_when: false

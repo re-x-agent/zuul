@@ -1,0 +1,42 @@
+- pipeline:
+    name: reviews
+    manager: independent
+    trigger:
+      github:
+        - event: pull_request_review
+          action: submitted
+          state: approved
+    success:
+      github:
+        label:
+          - tests passed
+
+- pipeline:
+    name: selfies
+    manager: independent
+    trigger:
+      github:
+        - event: pull_request
+          action: comment
+          comment: "I solemnly swear that I am up to no good"
+    success:
+      github:
+        review: approve
+
+- job:
+    name: base
+    parent: null
+    run: playbooks/base.yaml
+
+- job:
+    name: project-reviews
+    run: playbooks/project-reviews.yaml
+
+- project:
+    name: org/project
+    selfies:
+      jobs:
+        - project-reviews
+    reviews:
+      jobs:
+        - project-reviews

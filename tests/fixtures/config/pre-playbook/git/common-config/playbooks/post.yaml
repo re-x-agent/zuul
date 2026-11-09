@@ -1,0 +1,5 @@
+- hosts: all
+  tasks:
+    - file:
+        path: "{{zuul.executor.work_root}}/post_flag"
+        state: touch

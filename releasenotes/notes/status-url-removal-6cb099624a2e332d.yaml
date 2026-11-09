@@ -1,0 +1,5 @@
+---
+upgrade:
+  - |
+   The previously deprecated ``status-url`` attribute of the Github
+   and Pagure reporter has been removed.

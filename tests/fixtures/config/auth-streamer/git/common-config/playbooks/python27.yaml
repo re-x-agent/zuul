@@ -1,0 +1,29 @@
+# NOTE(Shrews): Do not run any tasks that will need zuul_console to stream
+# output because that will not work. Since we just need any output in our
+# ansible log, the test coordination tasks should be sufficient.
+- hosts: localhost
+  tasks:
+    - debug: var=waitpath
+
+    - debug:
+        msg: |
+          Multiline
+          Debug Test Token String
+          Message
+
+    # Logging of loops is special so we do a simple one iteration
+    # loop and check that we log things properly
+    - name: Override ansible_loop_var
+      set_fact:
+        _testing_fact: "{{ other_loop_var }}"
+      with_random_choice:
+        - "one"
+        - "two"
+        - "three"
+      loop_control:
+        loop_var: "other_loop_var"
+
+     # Do not finish until test creates the flag file
+    - wait_for:
+        state: present
+        path: "{{waitpath}}"

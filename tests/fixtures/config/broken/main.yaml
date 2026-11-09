@@ -1,0 +1,18 @@
+- tenant:
+    name: tenant-broken
+    source:
+      gerrit:
+        config-projects:
+          - common-config
+        untrusted-projects:
+          - org/project
+          - org/project2
+
+          # This project contains broken config
+          - org/project3
+- tenant:
+    name: tenant-good
+    source:
+      gerrit:
+        config-projects:
+          - org/project4

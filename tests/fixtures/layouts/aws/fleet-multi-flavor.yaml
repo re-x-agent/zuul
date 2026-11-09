@@ -1,0 +1,53 @@
+- image:
+    name: debian
+    type: cloud
+
+- flavor:
+    name: no-nested-virt
+
+- flavor:
+    name: with-nested-virt
+
+- label:
+    name: debian-no-nested-virt
+    image: debian
+    flavor: no-nested-virt
+
+- label:
+    name: debian-with-nested-virt
+    image: debian
+    flavor: with-nested-virt
+
+- section:
+    name: aws-base
+    abstract: true
+    connection: aws
+    label-defaults:
+      key-name: zuul
+    flavors:
+      - name: no-nested-virt
+        fleet:
+          instance-types:
+            - m8a.large
+          allocation-strategy: prioritized
+      - name: with-nested-virt
+        fleet:
+          instance-types:
+            - m8a.large
+          allocation-strategy: prioritized
+        nested-virtualization: true
+    images:
+      - name: debian
+        image-id: ami-1e749f67
+
+- section:
+    name: aws-us-east-1
+    parent: aws-base
+    region: us-east-1
+
+- provider:
+    name: aws-us-east-1-main
+    section: aws-us-east-1
+    labels:
+      - name: debian-no-nested-virt
+      - name: debian-with-nested-virt

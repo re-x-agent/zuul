@@ -1,0 +1,49 @@
+- pipeline:
+    name: check
+    manager: independent
+    trigger:
+      gerrit:
+        - event: patchset-created
+    success:
+      gerrit:
+        Verified: 1
+    failure:
+      gerrit:
+        Verified: -1
+
+- job:
+    name: base
+    parent: null
+    run: playbooks/base.yaml
+    nodeset:
+      nodes:
+        - label: ubuntu-xenial
+          name: controller
+
+- job:
+    name: check-job
+
+- job:
+    name: skip1-job
+
+- job:
+    name: skip2-job
+
+- job:
+    name: init1-job
+    type: initializer
+
+- job:
+    name: init2-job
+    # Make sure inheritance of "type" works
+    parent: init1-job
+
+- project:
+    name: org/project
+    check:
+      jobs:
+        - init1-job
+        - init2-job
+        - check-job
+        - skip1-job
+        - skip2-job

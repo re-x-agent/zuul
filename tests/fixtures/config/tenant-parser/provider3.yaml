@@ -1,0 +1,16 @@
+- tenant:
+    name: tenant-one
+    source:
+      gerrit:
+        config-projects:
+          - common-config:
+              include: pipeline
+              include-provider-config: true
+        untrusted-projects:
+          - org/project1:
+              include: job
+              include-provider-config: true
+          - include: project
+            include-provider-config: true
+            projects:
+              - org/project2

@@ -1,0 +1,94 @@
+# Stop the basic tutorial
+- name: Run docker compose down
+  when: not local
+  shell:
+    cmd: docker compose -p zuul-tutorial stop
+    chdir: src/opendev.org/zuul/zuul/doc/source/examples
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+
+- name: Run docker compose down
+  when: local
+  shell:
+    cmd: docker compose -p zuul-tutorial stop
+    chdir: ../../doc/source/examples
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+
+# Restart with the new config
+- name: Run docker compose up
+  when: not local
+  shell:
+    cmd: docker compose -p zuul-tutorial up -d
+    chdir: src/opendev.org/zuul/zuul/doc/source/examples
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+    ZUUL_TUTORIAL_CONFIG: "./keycloak/etc_zuul/"
+
+- name: Run docker compose up
+  when: local
+  shell:
+    cmd: docker compose -p zuul-tutorial up -d
+    chdir: ../../doc/source/examples
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+    ZUUL_TUTORIAL_CONFIG: "./keycloak/etc_zuul/"
+
+# Start keycloak
+- name: Run docker compose up
+  when: not local
+  shell:
+    cmd: docker compose -p zuul-tutorial-keycloak up -d
+    chdir: src/opendev.org/zuul/zuul/doc/source/examples/keycloak
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+
+- name: Run docker compose up
+  when: local
+  shell:
+    cmd: docker compose -p zuul-tutorial-keycloak up -d
+    chdir: ../../doc/source/examples/keycloak
+  environment:
+    DOCKER_HOST: unix:///run/podman/podman.sock
+
+# In case ZK is shutdown first, allow the locks to expire.
+- name: Delay for ZK lock expiration
+  wait_for:
+    timeout: 30
+  delegate_to: localhost
+
+# Verify that Zuul runs with the new config
+- name: Wait for Zuul
+  uri:
+    url: http://localhost:9000/api/components
+    method: GET
+    return_content: true
+    status_code: 200
+    body_format: json
+  register: result
+  retries: 30
+  delay: 10
+  until: result.status == 200 and (result.json["scheduler"]|length == 1) and result.json["scheduler"][0]['state'] == 'running'
+  changed_when: false
+
+- name: Verify Keycloak authentication is available
+  uri:
+    url: http://localhost:9000/api/tenant/example-tenant/info
+    method: GET
+    return_content: true
+    status_code: 200
+    body_format: json
+  register: result
+  failed_when: result.json["info"]["capabilities"]["auth"]["realms"]["zuul-demo"]["authority"] != "http://keycloak:8082/realms/zuul-demo"
+  changed_when: false
+
+- name: Verify that old builds are available
+  uri:
+    url: "http://localhost:9000/api/tenant/example-tenant/builds"
+    method: GET
+    return_content: true
+    status_code: 200
+    body_format: json
+  register: result
+  failed_when: "result.json | length < 4"
+  changed_when: false

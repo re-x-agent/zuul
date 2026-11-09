@@ -1,0 +1,104 @@
+# NOTE: We run this before starting the log streaming to validate that
+# if we set zuul_console_disabled, we don't try to connect at all.  If
+# there is a log streamer running when we run this test, then we have
+# no indication that we avoid the connection step.
+- name: Disable zuul console
+  hosts: node
+  tasks:
+    - set_fact:
+        zuul_console_disabled: true
+
+- name: Run command to show skipping works without zuul_console running
+  hosts: node
+  tasks:
+    - name: Run quiet command
+      command: echo 'This command should not stream 1'
+      when: new_console | default(false)
+
+- name: Start zuul stream daemon
+  hosts: node
+  tasks:
+
+    # NOTE : when new_console is set, this playbook runs with
+    # ZUUL_CONSOLE_PORT=19887 so that we test with the zuul_console
+    # from the Zuul checkout, and not the one started by test
+    # infrastructure.
+    - name: Start zuul_console on non-default port
+      zuul_console:
+        port: 19887
+      when: new_console | default(false)
+
+- name: Run command to show skipping works with zuul_console running
+  hosts: node
+  tasks:
+    - name: Run quiet command
+      command: echo 'This command should not stream 2'
+
+- name: Enable zuul console
+  hosts: node
+  tasks:
+    - set_fact:
+        zuul_console_disabled: false
+
+- name: Run some commands to show that logging works
+  hosts: node
+  tasks:
+
+    - name: Run setup
+      setup:
+      register: setupvar
+
+    - name: Output ansible version
+      debug:
+        var: ansible_version
+
+    - name: Output debug for a var
+      debug:
+        var: setupvar
+
+    - name: Output a debug sentence
+      debug:
+        msg: This is a debug message
+
+    - name: Run a shell task
+      command: ip addr show
+
+    - name: Loop with items
+      command: "echo {{ item }}"
+      with_items:
+        - item1
+        - item2
+        - item3
+
+    - name: Loop with complex items
+      command: "echo {{ item.name }}"
+      with_items:
+        - name: complex1
+        - name: complex2
+        - name: complex3
+
+    - name: Run a task with an ansible python exception
+      zuul_fail:
+        key: task
+      failed_when: false
+
+    - name: Loop with items on an ansible python exception
+      zuul_fail:
+        key: loop
+      with_items:
+        - item1
+        - item2
+        - item3
+      failed_when: false
+
+    - name: Find any console log files
+      find:
+        paths: /tmp
+        patterns: 'console-*.log'
+      register: _tmp_files
+
+    # We check this list in zuul-stream/functional.yaml to make sure
+    # we're cleaning up console log files.
+    - name: Dump tmp files
+      debug:
+        var: _tmp_files

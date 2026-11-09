@@ -1,0 +1,23 @@
+---
+features:
+  - |
+    A change has been made to the branch selection routine for role
+    repo checkouts in jobs triggered by tags.
+
+    Previously, when checking out a role repo for a tag job, Zuul
+    would check out the first match of the following:
+
+      * The project override-checkout
+      * The job override-checkout
+      * If the role project is the playbook project, then the playbook project branch
+      * The role project default branch
+
+    It is now updated to the following:
+
+      * The project override-checkout
+      * The job override-checkout
+      * The playbook project branch
+      * The role project default branch
+
+    This may be a change for certain jobs, but it is hoped that the
+    new sequence is more intuitive.

@@ -1,0 +1,3 @@
+- file:
+    path: "{{zuul.executor.work_root}}/bare_role_flag"
+    state: touch

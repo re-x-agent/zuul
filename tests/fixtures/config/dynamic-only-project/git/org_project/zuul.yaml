@@ -1,0 +1,18 @@
+- job:
+    name: project-test
+    tags: [master]
+
+# Note: this job is not expected to run
+- job:
+    name: project-post
+
+- project:
+    check:
+      jobs:
+        - project-test
+    gate:
+      jobs:
+        - project-test
+    post:
+      jobs:
+        - project-post

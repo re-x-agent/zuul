@@ -1,0 +1,7 @@
+---
+security:
+  - |
+    Streaming log handling for the ``win_command`` and ``win_shell``
+    modules did not correctly observe the ``no_log`` directive.
+    Previously Zuul would suppress output to the ``job-output.json``
+    file, but not output to ``job-output.txt`` or live log streams.

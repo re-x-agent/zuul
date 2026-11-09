@@ -1,0 +1,5 @@
+---
+features:
+  - |
+    The :attr:`authorization-rule.conditions` attribute can now
+    include conditions for boolean claims.

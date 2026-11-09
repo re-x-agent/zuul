@@ -1,0 +1,73 @@
+- image:
+    name: debian
+    type: cloud
+
+- image:
+    name: debian-local
+    type: zuul
+
+- flavor:
+    name: normal
+
+- flavor:
+    name: large
+
+- label:
+    name: debian-normal
+    image: debian
+    flavor: normal
+
+- label:
+    name: debian-large
+    image: debian
+    flavor: large
+
+- label:
+    name: debian-local-normal
+    image: debian-local
+    flavor: normal
+
+- section:
+    name: aws-base
+    abstract: true
+    connection: aws
+    launch-timeout: 600
+    launch-attempts: 2
+    object-storage:
+      bucket-name: zuul
+    image-defaults:
+      iops: 20
+    flavor-defaults:
+      iops: 30  # winner (large)
+      final: allow-override
+    flavors:
+      - name: normal
+        instance-type: t3.medium
+        iops: 40  # winner (normal, local-normal)
+      - name: large
+        instance-type: t3.large
+    images:
+      - name: debian
+        image-id: ami-1e749f67
+        iops: 60
+      - name: debian-local
+        iops: 60
+
+- section:
+    name: aws-us-east-1
+    parent: aws-base
+    region: us-east-1
+    flavor-defaults:
+      volume-size: 70
+      iops: 70  # winner (large) since it's redefined
+    flavors:
+      - name: large
+        instance-type: t3.large
+
+- provider:
+    name: aws-us-east-1-main
+    section: aws-us-east-1
+    labels:
+      - name: debian-normal
+      - name: debian-large
+      - name: debian-local-normal

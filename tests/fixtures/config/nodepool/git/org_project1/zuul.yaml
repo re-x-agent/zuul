@@ -1,0 +1,7 @@
+- project:
+    check:
+      jobs:
+        - debian-normal-job
+    gate:
+      jobs:
+        - debian-normal-job

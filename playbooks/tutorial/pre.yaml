@@ -1,0 +1,30 @@
+- hosts: all
+  roles:
+    - ensure-pip
+    - ensure-docker
+    - role: ensure-podman
+      ensure_podman_socket: true
+    - use-buildset-registry
+  tasks:
+    # docker-compose-v2 depends on the docker service. Disable it to
+    # ensure we're not accidentally using the docker daemon.
+    - name: Disable docker daemon service
+      become: true
+      service:
+        name: docker
+        state: stopped
+        enabled: false
+    - name: Disable docker socket service
+      become: true
+      service:
+        name: docker.socket
+        state: stopped
+        enabled: false
+    - name: Start buildx builder
+      # This may not be necessary under a normal docker install
+      # https://github.com/docker/buildx/issues/344
+      shell: |
+        echo "FROM scratch" | docker buildx build - || true
+      environment:
+        DOCKER_HOST: unix:///run/podman/podman.sock
+      become: true

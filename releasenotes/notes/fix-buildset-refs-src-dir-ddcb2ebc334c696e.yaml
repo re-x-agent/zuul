@@ -1,0 +1,10 @@
+---
+deprecations:
+  - |
+    The Zuul job variables :var:`zuul.build_refs.project.src_dir` and
+    :var:`zuul.buildset_refs.project.src_dir` were erroneously
+    supplied as ``zuul.build_refs.src_dir`` and
+    ``zuul.buildset_refs.src_dir`` respectively.  The correct
+    variables are now supplied, and any usages of the old, incorrect
+    variables should be replaced.  The old variables will be removed
+    in a future version of Zuul.

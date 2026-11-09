@@ -1,0 +1,13 @@
+- job:
+    name: project2-job
+    run: playbooks/common.yaml
+
+- job:
+    name: project2-job
+    branches: stable
+
+- project:
+    name: org/project2
+    check:
+      jobs:
+        - project2-job

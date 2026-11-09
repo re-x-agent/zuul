@@ -1,0 +1,16 @@
+- tenant:
+    name: tenant-one
+    source:
+      gerrit:
+        config-projects:
+          - common-config:
+              # Ignored:
+              include-provider-config: false
+              exclude: semaphore
+        untrusted-projects:
+          - org/project1:
+              include-provider-config: true
+          - exclude: project
+            include-provider-config: true
+            projects:
+              - org/project2

@@ -1,0 +1,7 @@
+---
+features:
+  - |
+    A new type of job, a "reporter" job is available.  It allows users
+    to perform an action immediately after all pipeline reporters have
+    run for a queue item.  The configuration attribute,
+    :attr:`job.type` is used to enable the feature.

@@ -1,0 +1,88 @@
+- pipeline:
+    name: check
+    manager: independent
+    trigger:
+      gerrit:
+        - event: patchset-created
+    success:
+      gerrit:
+        Verified: 1
+    failure:
+      gerrit:
+        Verified: -1
+
+- job:
+    name: base
+    parent: null
+    run: playbooks/base.yaml
+    nodeset:
+      nodes:
+        - label: debian-normal
+          name: controller
+
+- job:
+    name: check-job
+    run: playbooks/check.yaml
+
+- project:
+    name: org/project
+    check:
+      jobs:
+        - check-job
+
+- image:
+    name: debian
+    type: cloud
+
+- flavor:
+    name: normal
+
+- label:
+    name: debian-normal
+    image: debian
+    flavor: normal
+
+- section:
+    name: aws-base
+    abstract: true
+    connection: aws
+    launch-timeout: 600
+    launch-attempts: 2
+    object-storage:
+      bucket-name: zuul
+    label-defaults:
+      host-key-checking: false
+      boot-timeout: 300
+      key-name: zuul
+    flavors:
+      - name: normal
+        instance-type: t3.medium
+        market-type: spot
+        nested-virtualization: true
+    images:
+      - name: debian
+        image-id: ami-1e749f67
+        imds-http-tokens: required
+
+- section:
+    name: aws-us-east-1
+    parent: aws-base
+    region: us-east-1
+    label-defaults:
+      az: us-east-1b
+      security-group-ids: testgroup
+      subnet-ids: {subnet_ids}
+      iam-instance-profile:
+        name: {iam_profile_name}
+      userdata: testuserdata
+      # Not really a customer-managed-key, but it is one that
+      # moto has pre-defined.
+      kms-key-id: alias/aws/ebs
+    flavor-defaults:
+      public-ipv6: True
+
+- provider:
+    name: aws-us-east-1-main
+    section: aws-us-east-1
+    labels:
+      - name: debian-normal

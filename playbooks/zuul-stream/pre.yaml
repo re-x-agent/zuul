@@ -1,0 +1,50 @@
+- hosts: controller
+  roles:
+
+    - role: ensure-pip
+
+    - role: bindep
+      bindep_profile: compile
+      bindep_dir: src/opendev.org/zuul/zuul
+
+  post_tasks:
+
+    - name: Install pip
+      shell: |+
+        python3 -m pip install --break-system-packages --upgrade pip setuptools wheel
+      become: yes
+
+    - name: Build wheel
+      shell:
+        chdir: src/opendev.org/zuul/zuul
+        cmd: |+
+          python3 setup.py bdist_wheel
+
+    - name: Install software
+      shell: |+
+        python3 -m pip install --break-system-packages  src/opendev.org/zuul/zuul/dist/*.whl
+      become: yes
+
+    - name: Install managed ansible versions
+      command: /usr/local/bin/zuul-manage-ansible -v
+      become: yes
+      environment:
+        # This appears to be necessary because without it the virtualenvs
+        # that virtualenv creates are not actually virtualenvs. They are just
+        # aliases for the root python installation instead. Then we try to
+        # install multiple ansible versions to the root (via multiple fake
+        # venvs) and the installation fails due to conflicts.
+        SETUPTOOLS_USE_DISTUTILS: stdlib
+
+    - name: Copy inventory
+      copy:
+        src: "{{ zuul.executor.log_root }}/zuul-info/inventory.yaml"
+        dest: "{{ ansible_user_dir }}/inventory.yaml"
+
+    - name: Copy ansible.cfg
+      template:
+        src: templates/ansible.cfg.j2
+        dest: "{{ ansible_user_dir }}/ansible.cfg"
+
+    - name: Generate logging config
+      command: python3 src/opendev.org/zuul/zuul/zuul/ansible/logconfig.py

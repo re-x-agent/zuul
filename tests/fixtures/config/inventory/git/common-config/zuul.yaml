@@ -1,0 +1,133 @@
+- pipeline:
+    name: check
+    manager: independent
+    post-review: true
+    trigger:
+      gerrit:
+        - event: patchset-created
+      github:
+        - event: pull_request
+          action: opened
+    success:
+      gerrit:
+        Verified: 1
+      github: {}
+    failure:
+      gerrit:
+        Verified: -1
+      github: {}
+
+- nodeset:
+    name: nodeset1
+    nodes:
+      - name: controller
+        label: controller-label
+      - name: compute1
+        label: compute-label
+      - name: compute2
+        label: compute-label
+    groups:
+      - name: ceph-osd
+        nodes:
+          - controller
+      - name: ceph-monitor
+        nodes:
+          - controller
+          - compute1
+          - compute2
+
+- nodeset:
+    name: nodeset2
+    nodes:
+      - name: default
+        label: default-label
+      - name: fakeuser
+        label: fakeuser-label
+      - name: windows
+        label: windows-label
+      - name: network
+        label: network-label
+
+- job:
+    name: base
+    parent: null
+
+- job:
+    name: single-inventory
+    nodeset:
+      nodes:
+        - name: ubuntu-xenial
+          label: ubuntu-xenial
+    run: playbooks/single-inventory.yaml
+
+- job:
+    name: single-inventory-list
+    nodeset:
+      nodes:
+        - name:
+            - compute
+            - controller
+          label: ubuntu-xenial
+    run: playbooks/single-inventory.yaml
+
+- job:
+    name: executor-only-inventory
+    nodeset:
+      nodes: []
+    run: playbooks/executor-only-inventory.yaml
+
+- job:
+    name: group-inventory
+    nodeset: nodeset1
+    run: playbooks/group-inventory.yaml
+    group-vars:
+      ceph-osd:
+        ceph_var: ceph
+
+- job:
+    name: hostvars-inventory
+    run: playbooks/hostvars-inventory.yaml
+    nodeset: nodeset2
+    vars:
+      all_var: all
+
+- job:
+    name: jinja2-message
+    files: jinja.txt
+    nodeset:
+      nodes:
+        - name: ubuntu-xenial
+          label: ubuntu-xenial
+    run: playbooks/jinja2-message.yaml
+
+- job:
+    name: network
+    files: network.txt
+    nodeset:
+      nodes:
+        - name: controller
+          label: ubuntu-xenial
+        - name: appliance
+          label: network
+    host-vars:
+      appliance:
+        ansible_network_os: foo
+    run: playbooks/network.yaml
+
+- job:
+    name: ansible-version9-inventory
+    nodeset:
+      nodes:
+        - name: ubuntu-xenial
+          label: ubuntu-xenial
+    ansible-version: '9'
+    run: playbooks/ansible-version.yaml
+
+- job:
+    name: ansible-version11-inventory
+    nodeset:
+      nodes:
+        - name: ubuntu-xenial
+          label: ubuntu-xenial
+    ansible-version: '11'
+    run: playbooks/ansible-version.yaml

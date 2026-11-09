@@ -1,0 +1,8 @@
+---
+fixes:
+  - |
+    Zuul will now record a notice in the job-output.json for Ansible
+    playbooks that fail to do so themselves. This can happen if Ansible
+    crashes or is forced to stop by Zuul due to timeouts. The information
+    is minimal, but should give users an indication in the web ui console
+    of why certain plays are not recorded.

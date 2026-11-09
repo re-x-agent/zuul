@@ -1,0 +1,14 @@
+- flavor:
+    name: large
+
+- section:
+    name: aws-base
+    abstract: true
+    connection: aws
+
+- provider:
+    name: aws-us-east-1-main
+    section: aws-us-east-1
+    flavors:
+      - name: large
+        instance-type: t3.large

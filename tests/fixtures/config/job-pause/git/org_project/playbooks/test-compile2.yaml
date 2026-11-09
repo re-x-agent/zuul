@@ -1,0 +1,9 @@
+- hosts: all
+  tasks:
+    # We expect the variables of compile1 and compile2 to exist
+    - assert:
+        that:
+          - compile1 is defined
+          - compile1 == 'test'
+          - compile2 is defined
+          - compile2 == 'test'

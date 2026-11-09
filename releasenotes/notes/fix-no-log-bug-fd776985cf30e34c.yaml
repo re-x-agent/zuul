@@ -1,0 +1,6 @@
+---
+fixes:
+  - |
+    The Zuul module for `ansible.builtin.command` and `ansible.builtin.shell`
+    now correctly handles the case when `no_log: True` is set. Previously
+    the task would deadlock if the process output filled the buffer.

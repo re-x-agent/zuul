@@ -1,0 +1,129 @@
+- pipeline:
+    name: check
+    manager: independent
+    trigger:
+      gerrit:
+        - event: patchset-created
+    success:
+      gerrit:
+        Verified: 1
+    failure:
+      gerrit:
+        Verified: -1
+
+- pipeline:
+    name: gate
+    manager: dependent
+    success-message: Build succeeded (gate).
+    trigger:
+      gerrit:
+        - event: comment-added
+          approval:
+            - Approved: 1
+    success:
+      gerrit:
+        Verified: 2
+        submit: true
+    failure:
+      gerrit:
+        Verified: -2
+    start:
+      gerrit:
+        Verified: 0
+    precedence: high
+
+- pipeline:
+    name: post
+    manager: independent
+    trigger:
+      gerrit:
+        - event: ref-updated
+          ref: ^(?!refs/).*$
+
+- pipeline:
+    name: tag
+    manager: independent
+    trigger:
+      gerrit:
+        - event: ref-updated
+          ref: ^refs/tags/.*$
+
+- job:
+    name: base
+    parent: null
+    run: playbooks/base.yaml
+    nodeset:
+      nodes:
+        - label: debian-normal
+          name: controller
+
+- job:
+    name: check-job
+    run: playbooks/check.yaml
+
+- job:
+    name: post-job
+    run: playbooks/post.yaml
+
+- job:
+    name: tag-job
+    run: playbooks/tag.yaml
+
+- project:
+    name: org/project
+    check:
+      jobs:
+        - check-job
+    gate:
+      jobs:
+        - check-job
+    post:
+      jobs:
+        - post-job
+    tag:
+      jobs:
+        - tag-job
+
+- image:
+    name: debian
+    type: cloud
+
+- flavor:
+    name: normal
+
+- label:
+    name: debian-normal
+    image: debian
+    flavor: normal
+
+- label:
+    name: special-hardware
+    image: debian
+    flavor: normal
+
+- section:
+    name: static-base
+    abstract: true
+    connection: static
+
+- section:
+    name: static
+    parent: static-base
+    flavors:
+      - name: normal
+
+- provider:
+    name: static-main
+    section: static
+    nodes:
+      - name: '198.51.100.1'
+        label: debian-normal
+        aliases:
+          - special-hardware
+    labels:
+      - name: debian-normal
+      - name: special-hardware
+    images:
+      - name: debian
+        connection-port: 22
+        username: vinz

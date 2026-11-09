@@ -1,0 +1,19 @@
+- name: Run some commands to show that logging works on failed tasks too
+  hosts: node
+  tasks:
+
+    - block:
+
+      - name: Run a task with an ansible python exception
+        zuul_fail:
+          key: fail-task
+
+      always:
+
+      - name: Loop with items on an ansible python exception
+        zuul_fail:
+          key: fail-loop
+        with_items:
+          - item1
+          - item2
+          - item3

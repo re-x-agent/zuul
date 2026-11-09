@@ -1,0 +1,6 @@
+---
+features:
+  - |
+    Added support for the branch attribute in GitLab pipeline configurations
+    triggered by merge_request events. This enables pipelines to run only for
+    specific branches, providing precise control over branch-specific behavior.

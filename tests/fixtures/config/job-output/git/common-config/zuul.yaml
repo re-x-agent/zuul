@@ -1,0 +1,227 @@
+- pipeline:
+    name: check
+    manager: independent
+    post-review: true
+    trigger:
+      gerrit:
+        - event: patchset-created
+    success:
+      gerrit:
+        Verified: 1
+    failure:
+      gerrit:
+        Verified: -1
+
+- job:
+    name: base
+    parent: null
+    nodeset:
+      nodes:
+        - name: test_node
+          label: test_label
+
+- job:
+    parent: base
+    name: job-output
+    run: playbooks/job-output.yaml
+
+- job:
+    parent: job-output
+    name: job-output-split-streams
+    ansible-split-streams: true
+
+- job:
+    name: job-output-failure
+    run: playbooks/job-output.yaml
+    post-run: playbooks/job-output-failure-post.yaml
+
+- job:
+    name: job-output-failure-split-streams
+    parent: job-output-failure
+    ansible-split-streams: true
+
+- job:
+    name: job-output-missing-role
+    run: playbooks/job-output-missing-role.yaml
+
+- job:
+    name: job-output-missing-role-include
+    run: playbooks/job-output-missing-role-include.yaml
+
+- job:
+    name: pre-timeout
+    pre-run: playbooks/timeout.yaml
+    run: playbooks/job-output.yaml
+    attempts: 1
+    pre-timeout: 5
+    files:
+      - pretimeout
+
+- job:
+    name: run-timeout
+    run: playbooks/timeout.yaml
+    # Give the job enough time to reach the run phase but less than 60s
+    # which is the time the run playbook waits to trigger a job timeout.
+    # It needs to reach the run phase since timeouting in the pre-run phase
+    # will lead to a job retry.
+    timeout: 20
+    files:
+      - runtimeout
+
+- job:
+    name: post-timeout
+    run: playbooks/job-output.yaml
+    post-run: playbooks/timeout.yaml
+    post-timeout: 5
+    files:
+      - posttimeout
+
+- job:
+    name: pre-syntax
+    pre-run: playbooks/syntax.yaml
+    run: playbooks/job-output.yaml
+    attempts: 1
+    files:
+      - presyntax
+
+- job:
+    name: run-syntax
+    run: playbooks/syntax.yaml
+    files:
+      - runsyntax
+
+- job:
+    name: post-syntax
+    run: playbooks/job-output.yaml
+    post-run: playbooks/syntax.yaml
+    files:
+      - postsyntax
+
+- secret:
+    name: test-secret
+    data:
+      username: test-username
+      complex_data:
+        password: !encrypted/pkcs1-oaep |
+          BFhtdnm8uXx7kn79RFL/zJywmzLkT1GY78P3bOtp4WghUFWobkifSu7ZpaV4NeO0s71Y
+          Usi1wGZZL0LveZjUN0t6OU1VZKSG8R5Ly7urjaSo1pPVIq5Rtt/H7W14Lecd+cUeKb4j
+          oeusC9drN3AA8a4oykcVpt1wVqUnTbMGC9ARMCQP6eopcs1l7tzMseprW4RDNhIuz3CR
+          gd0QBMPl6VDoFgBPB8vxtJw+3m0rqBYZCLZgCXekqlny8s2s92nJMuUABbJOEcDRarzi
+          bDsSXsfJt1y+5n7yOURsC7lovMg4GF/vCl/0YMKjBO5bpv9EM5fToeKYyPGSKQoHOnCY
+          ceb3cAVcv5UawcCic8XjhEhp4K7WPdYf2HVAC/qtxhbpjTxG4U5Q/SoppOJ60WqEkQvb
+          Xs6n5Dvy7xmph6GWmU/bAv3eUK3pdD3xa2Ue1lHWz3U+rsYraI+AKYsMYx3RBlfAmCeC
+          1ve2BXPrqnOo7G8tnUvfdYPbK4Aakk0ds/AVqFHEZN+S6hRBmBjLaRFWZ3QSO1NjbBxW
+          naHKZYT7nkrJm8AMCgZU0ZArFLpaufKCeiK5ECSsDxic4FIsY1OkWT42qEUfL0Wd+150
+          AKGNZpPJnnP3QYY4W/MWcKH/zdO400+zWN52WevbSqZy90tqKDJrBkMl1ydqbuw1E4ZH
+          vIs=
+
+- secret:
+    name: oidc-secret
+    oidc:
+
+- job:
+    name: expose-secrets-parent
+    pre-run: playbooks/expose-secrets-parent.yaml
+
+- job:
+    name: expose-secrets-txt
+    parent: expose-secrets-parent
+    run: playbooks/expose-secrets-txt.yaml
+    secrets:
+      - name: test_secret
+        secret: test-secret
+      - name: oidc_secret
+        secret: oidc-secret
+
+- job:
+    name: expose-secrets-json
+    parent: expose-secrets-parent
+    run:
+      - playbooks/expose-secrets-json1.yaml
+      - playbooks/expose-secrets-json2.yaml
+    secrets:
+      - name: test_secret
+        secret: test-secret
+
+- job:
+    name: expose-secrets-txt-ignore
+    parent: expose-secrets-txt
+    secret-exposure: ignore
+
+- job:
+    name: expose-secrets-json-ignore
+    parent: expose-secrets-json
+    secret-exposure: ignore
+
+- job:
+    name: expose-secrets-txt-redact
+    parent: expose-secrets-txt
+    secret-exposure: redact
+
+- job:
+    name: expose-secrets-json-redact
+    parent: expose-secrets-json
+    secret-exposure: redact
+
+- job:
+    name: expose-secrets-txt-fail
+    parent: expose-secrets-txt
+    secret-exposure: fail
+
+- job:
+    name: expose-secrets-json-fail
+    parent: expose-secrets-json
+    secret-exposure: fail
+
+- project:
+    name: org/project
+    check:
+      jobs:
+        - job-output
+
+- project:
+    name: org/project2
+    check:
+      jobs:
+        - job-output-failure
+
+- project:
+    name: org/project3
+    check:
+      jobs:
+        - job-output-missing-role
+        - job-output-missing-role-include
+
+- project:
+    name: org/project4
+    check:
+      jobs:
+        - job-output-split-streams
+
+- project:
+    name: org/project5
+    check:
+      jobs:
+        - job-output-failure-split-streams
+
+- project:
+    name: org/project6
+    check:
+      jobs:
+        - pre-timeout
+        - run-timeout
+        - post-timeout
+        - pre-syntax
+        - run-syntax
+        - post-syntax
+
+- project:
+    name: org/project7
+    check:
+      jobs:
+        - expose-secrets-txt-ignore
+        - expose-secrets-json-ignore
+        - expose-secrets-txt-redact
+        - expose-secrets-json-redact
+        - expose-secrets-txt-fail
+        - expose-secrets-json-fail

@@ -1,0 +1,13 @@
+- hosts: all
+  tasks:
+    - file:
+        path: "{{flagpath}}"
+        state: touch
+    - copy:
+        src: "{{zuul.executor.work_root}}/flag"
+        dest: "{{zuul.executor.work_root}}/copied"
+    - copy:
+        content: "{{test_secret.username}} {{test_secret.password}}"
+        dest: "{{zuul.executor.work_root}}/secrets"
+  roles:
+    - bare-role

@@ -1,0 +1,9 @@
+---
+upgrade:
+  - |
+    For a queue item with circular dependencies, Zuul now sets the
+    ``origin`` remote on workspace repos to point to the merge base of
+    the queue item rather than an arbitrary individual change within
+    the dependency cycle.  This allows for more deterministic behavior
+    and is more useful for jobs that compare the current state to the
+    merge base.

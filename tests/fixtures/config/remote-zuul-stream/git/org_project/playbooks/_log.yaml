@@ -1,0 +1,13 @@
+- name: Test no_log command
+  no_log: true
+  command: echo "This task should not log"
+
+- name: Test no_log shell
+  no_log: true
+  shell: echo "This task should not log"
+
+- name: Test include_tasks command
+  command: echo "This is a command task from include_tasks inside a loop (index={{ index }})"
+
+- name: Test include_tasks shell
+  command: echo "This is a shell task from include_tasks inside a loop (index={{ index }})"

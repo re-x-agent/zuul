@@ -1,0 +1,8 @@
+---
+features:
+  - |
+    A new type of job, an "initializer" job is available.  It allows
+    users to easily configure very large job graphs where all the jobs
+    in the graph have dependencies on a single (or small number) of
+    jobs.  The configuration attribute, :attr:`job.type` is available
+    to enable the feature.

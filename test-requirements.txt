@@ -1,0 +1,14 @@
+coverage>=3.6
+fixtures>=0.3.14
+stestr>=1.0.0 # Apache-2.0
+testtools>=0.9.32
+# graphql-core is a dependency of graphene,
+# but version 3.2.7 is causing TypeErrors,
+# so we need to pin it here.
+graphql-core<=3.2.6
+PyMySQL
+psycopg2-binary
+beautifulsoup4
+graphene
+requests_mock
+moto

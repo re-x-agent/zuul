@@ -1,0 +1,4 @@
+- hosts: localhost
+  tasks:
+    - name: Execute script
+      shell: "bash {{ zuul.executor.work_root }}/{{ zuul.projects['review.example.com/org/requiredproject'].src_dir }}/script.sh"

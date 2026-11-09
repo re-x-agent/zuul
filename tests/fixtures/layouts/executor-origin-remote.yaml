@@ -1,0 +1,43 @@
+- queue:
+    name: integrated
+    allow-circular-dependencies: true
+
+- pipeline:
+    name: check
+    manager: independent
+    trigger:
+      gerrit:
+        - event: patchset-created
+    success:
+      gerrit:
+        Verified: 1
+    failure:
+      gerrit:
+        Verified: -1
+
+- job:
+    name: base
+    parent: null
+    run: playbooks/base.yaml
+    nodeset:
+      nodes:
+        - label: ubuntu-xenial
+          name: controller
+
+- job:
+    name: deduplicated-job
+    run: playbooks/check.yaml
+    deduplicate: true
+
+- job:
+    name: normal-job
+    run: playbooks/check.yaml
+    deduplicate: false
+
+- project:
+    name: org/project
+    queue: integrated
+    check:
+      jobs:
+        - deduplicated-job
+        - normal-job

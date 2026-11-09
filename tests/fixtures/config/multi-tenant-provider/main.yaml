@@ -1,0 +1,20 @@
+- tenant:
+    name: tenant-one
+    source:
+      gerrit:
+        config-projects:
+          - common-config:
+              extra-config-paths: zuul-image.yaml
+          - tenant-one-config
+        untrusted-projects:
+          - org/project1
+
+- tenant:
+    name: tenant-two
+    source:
+      gerrit:
+        config-projects:
+          - common-config
+          - tenant-two-config
+        untrusted-projects:
+          - org/project2

@@ -1,0 +1,17 @@
+---
+features:
+  - |
+    A new configuration setting, ``replication_delay`` has been added to
+    the Gerrit driver. Some Gerrit installations consist of multiple
+    servers with various strategies for keeping these servers in sync
+    (push replication, pull replication, multi-master, shared storage,
+    etc.).  Since there is currently no reliable method to determine
+    when all servers are updated, this setting may be used to
+    introduce a delay in event processing.  Zuul will ensure that at
+    least this amount of time (in seconds) has passed before
+    processing the corresponding event.
+deprecations:
+  - |
+    The ``replication_timeout`` setting for the Gerrit driver is now
+    ignored and should be removed from ``zuul.conf`` files.  See the
+    new ``replication_delay`` setting for an alternative.

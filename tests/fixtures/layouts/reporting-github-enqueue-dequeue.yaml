@@ -1,0 +1,49 @@
+- pipeline:
+    name: reporting
+    description: Reporting via Githubs Checks API
+    manager: dependent
+    trigger:
+      github:
+        - event: push
+        - event: pull_request
+          action: opened
+    enqueue:
+      github:
+        check: queued
+    start:
+      github:
+        check: in_progress
+    success:
+      github:
+        check: success
+    failure:
+      github:
+        check: failure
+    no-jobs:
+      github:
+        check: skipped
+    dequeue:
+      github:
+        check: cancelled
+    window: 1
+    window-floor: 1
+    window-ceiling: 1
+
+- job:
+    name: base
+    parent: null
+    run: playbooks/base.yaml
+
+- job:
+    name: project-test1
+
+- project:
+    name: org/project
+    reporting:
+      jobs:
+        - project-test1
+
+- project:
+    name: org/project1
+    reporting:
+      jobs: []

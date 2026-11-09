@@ -1,0 +1,8 @@
+---
+features:
+  - |
+    Jobs may now filter the non-required projects for their workspace.
+    If a job is known to only operate on a certain set of projects,
+    the :attr:`job.include-projects` and :attr:`job.exclude-projects`
+    attributes may be used to instruct Zuul to skip the workspace
+    preparation of projects that are not required by the job.

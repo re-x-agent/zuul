@@ -1,0 +1,8 @@
+---
+security:
+  - |
+    A vulnerability in the zuul-web component could be used to obtain
+    the contents of any file accessible on the zuul-web server (or
+    within its container).  The vulnerability is believed to have been
+    present prior to version 4 of Zuul, and has been corrected as of
+    version 13.1.0.

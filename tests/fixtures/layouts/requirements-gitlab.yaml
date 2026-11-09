@@ -1,0 +1,230 @@
+- pipeline:
+    name: state-check
+    manager: independent
+    require:
+      gitlab:
+        open: true
+        merged: false
+    trigger:
+      gitlab:
+        - event: gl_merge_request
+          action: comment
+          comment: (?i)^\s*recheck\s*$
+        - event: gl_merge_request
+          action:
+            - opened
+            - changed
+    success:
+      gitlab:
+        comment: true
+
+- pipeline:
+    name: reject-state-check
+    manager: independent
+    reject:
+      gitlab:
+        open: false
+        merged: true
+    trigger:
+      gitlab:
+        - event: gl_merge_request
+          action: comment
+          comment: (?i)^\s*recheck\s*$
+        - event: gl_merge_request
+          action:
+            - opened
+            - changed
+    success:
+      gitlab:
+        comment: true
+
+- pipeline:
+    name: approval-check
+    manager: independent
+    require:
+      gitlab:
+        approved: true
+    trigger:
+      gitlab:
+        - event: gl_merge_request
+          action: comment
+          comment: (?i)^\s*recheck\s*$
+        - event: gl_merge_request
+          action:
+            - opened
+            - changed
+    success:
+      gitlab:
+        comment: true
+
+- pipeline:
+    name: reject-unapproved-check
+    manager: independent
+    require:
+      gitlab:
+        open: true
+        merged: false
+    reject:
+      gitlab:
+        approved: false
+    trigger:
+      gitlab:
+        - event: gl_merge_request
+          action: comment
+          comment: (?i)^\s*recheck\s*$
+        - event: gl_merge_request
+          action:
+            - opened
+            - changed
+    success:
+      gitlab:
+        comment: true
+
+- pipeline:
+    name: label-check
+    manager: independent
+    require:
+      gitlab:
+        labels:
+          - gateit
+          - another_label
+    trigger:
+      gitlab:
+        - event: gl_merge_request
+          action: comment
+          comment: (?i)^\s*recheck\s*$
+        - event: gl_merge_request
+          action:
+            - opened
+            - changed
+    success:
+      gitlab:
+        comment: true
+
+- pipeline:
+    name: reject-label-check
+    manager: independent
+    require:
+      gitlab:
+        labels:
+          - gateit
+          - verified
+    reject:
+      gitlab:
+        labels:
+          - do-not-merge
+          - do-not-test
+    trigger:
+      gitlab:
+        - event: gl_merge_request
+          action: comment
+          comment: (?i)^\s*recheck\s*$
+        - event: gl_merge_request
+          action:
+            - opened
+            - changed
+    success:
+      gitlab:
+        comment: true
+
+- pipeline:
+    name: require-reject-comprehensive-check
+    manager: independent
+    require:
+      gitlab:
+        open: true
+        merged: false
+        labels:
+          - gateit
+    reject:
+      gitlab:
+        open: false
+        labels:
+          - do-not-merge
+    trigger:
+      gitlab:
+        - event: gl_merge_request
+          action: comment
+          comment: (?i)^\s*recheck\s*$
+        - event: gl_merge_request
+          action:
+            - opened
+            - changed
+    success:
+      gitlab:
+        comment: true
+
+- job:
+    name: base
+    parent: null
+    run: playbooks/base.yaml
+
+- job:
+    name: project1-test
+    run: playbooks/project-test.yaml
+
+- project:
+    name: org/project1
+    state-check:
+      jobs:
+        - project1-test
+
+- job:
+    name: project2-test
+    run: playbooks/project-test.yaml
+
+- project:
+    name: org/project2
+    approval-check:
+      jobs:
+        - project2-test
+
+- job:
+    name: project3-test
+    run: playbooks/project-test.yaml
+
+- project:
+    name: org/project3
+    label-check:
+      jobs:
+        - project3-test
+
+- job:
+    name: project4-test
+    run: playbooks/project-test.yaml
+
+- project:
+    name: org/project4
+    reject-state-check:
+      jobs:
+        - project4-test
+
+- job:
+    name: project5-test
+    run: playbooks/project-test.yaml
+
+- project:
+    name: org/project5
+    reject-unapproved-check:
+      jobs:
+        - project5-test
+
+- job:
+    name: project6-test
+    run: playbooks/project-test.yaml
+
+- project:
+    name: org/project6
+    reject-label-check:
+      jobs:
+        - project6-test
+
+- job:
+    name: project7-test
+    run: playbooks/project-test.yaml
+
+- project:
+    name: org/project7
+    require-reject-comprehensive-check:
+      jobs:
+        - project7-test

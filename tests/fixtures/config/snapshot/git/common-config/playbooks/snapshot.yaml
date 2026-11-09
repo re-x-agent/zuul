@@ -1,0 +1,9 @@
+- hosts: all
+  tasks:
+    - name: Return snapshot command to Zuul
+      zuul_return:
+        data:
+          zuul:
+            snapshot_nodes:
+              - node: "{{ zuul_node.uuid }}"
+                image_name: "debian-local"

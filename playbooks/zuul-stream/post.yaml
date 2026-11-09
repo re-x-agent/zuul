@@ -1,0 +1,28 @@
+- hosts: controller
+  tasks:
+
+    - set_fact:
+        output_dir: "{{ zuul.executor.log_root }}/stream-files"
+
+    - name: Make log subdir
+      file:
+        path: "{{ output_dir }}"
+        state: directory
+      delegate_to: localhost
+
+    - name: Fetch files
+      synchronize:
+        src: "{{ ansible_user_dir }}/{{ item }}"
+        dest: "{{ output_dir }}"
+        mode: pull
+      with_items:
+        - logging.json
+        - ansible.cfg
+        - console-job-output-success-19887.txt
+        - console-job-output-success-19885.txt
+        - job-output-success-19887.txt
+        - job-output-success-19887.json
+        - job-output-success-19885.txt
+        - job-output-success-19885.json
+        - job-output-failure.txt
+        - job-output-failure.json

@@ -1,0 +1,9 @@
+---
+features:
+  - |
+    Implemented support for the `reject` attribute in the GitLab driver.
+    It allows specifying Merge Requests which should not be enqueued into
+    a pipeline. The supported conditions cover the same Merge Requests'
+    parameters as available in the existing `require` attribute – filtering
+    whether the Merge Request must (not) be open, merged, approved or contain
+    some labels.

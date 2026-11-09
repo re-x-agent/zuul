@@ -1,0 +1,30 @@
+- hosts: all
+  tasks:
+    - name: Create logs directory
+      file:
+        state: directory
+        path: "{{ ansible_user_dir }}/logs"
+        mode: 0755
+    - name: Save container log files
+      shell: |
+        set +e
+        docker logs zuul-tutorial-gerrit-1 > {{ ansible_user_dir }}/logs/gerrit.log 2>&1
+        docker logs zuul-tutorial-gerritconfig-1 > {{ ansible_user_dir }}/logs/gerritconfig.log 2>&1
+        docker logs zuul-tutorial-zk-1 > {{ ansible_user_dir }}/logs/zk.log 2>&1
+        docker logs zuul-tutorial-mysql-1 > {{ ansible_user_dir }}/logs/mysql.log 2>&1
+        docker logs zuul-tutorial-scheduler-1 > {{ ansible_user_dir }}/logs/scheduler.log 2>&1
+        docker logs zuul-tutorial-web-1 > {{ ansible_user_dir }}/logs/web.log 2>&1
+        docker logs zuul-tutorial-executor-1 > {{ ansible_user_dir }}/logs/executor.log 2>&1
+        docker logs zuul-tutorial-node-1 > {{ ansible_user_dir }}/logs/node.log 2>&1
+        docker logs zuul-tutorial-launcher-1 > {{ ansible_user_dir }}/logs/launcher.log 2>&1
+        docker logs zuul-tutorial-logs-1 > {{ ansible_user_dir }}/logs/logs.log 2>&1
+        docker logs zuul-tutorial-tracing_jaeger-1 > {{ ansible_user_dir }}/logs/jaeger.log 2>&1
+        exit 0
+      environment:
+        DOCKER_HOST: unix:///run/podman/podman.sock
+    - name: Copy container log files to executor
+      synchronize:
+        mode: pull
+        src: "{{ ansible_user_dir }}/logs/"
+        dest: "{{ zuul.executor.log_root }}/container_logs/"
+        verify_host: true

@@ -1,0 +1,85 @@
+- image:
+    name: debian
+    type: cloud
+
+- image:
+    name: debian-local
+    type: zuul
+
+- flavor:
+    name: normal
+
+- flavor:
+    name: large
+
+- label:
+    name: debian-normal
+    image: debian
+    flavor: normal
+
+- label:
+    name: debian-large
+    image: debian
+    flavor: large
+    max-ready-age: 300
+
+- label:
+    name: debian-local-normal
+    image: debian-local
+    flavor: normal
+
+- section:
+    name: aws-base
+    abstract: true
+    connection: aws
+    launch-timeout: 600
+    launch-attempts: 2
+    object-storage:
+      bucket-name: zuul
+    label-defaults:
+      host-key-checking: false
+      boot-timeout: 120
+      max-ready-age: 900
+      key-name: zuul
+      volume-type: gp3
+      volume-size: 10  # winner (all)
+      security-group-ids:
+        - sg1
+    image-defaults:
+      volume-size: 20
+      iops: 20
+      throughput: 20  # winner (normal, large)
+    flavor-defaults:
+      volume-size: 30
+      iops: 30  # winner (large)
+      imds-http-tokens: required # winner (all)
+    flavors:
+      - name: normal
+        instance-type: t3.medium
+        iops: 40  # winner (normal, local-normal)
+      - name: large
+        instance-type: t3.large
+    images:
+      - name: debian
+        image-id: ami-1e749f67
+        iops: 60
+      - name: debian-local
+        iops: 60
+        throughput: 60  # winner (local-normal)
+
+- section:
+    name: aws-us-east-1
+    parent: aws-base
+    region: us-east-1
+    flavor-defaults:
+      volume-size: 70
+      iops: 70  # winner (large)
+
+- provider:
+    name: aws-us-east-1-main
+    section: aws-us-east-1
+    labels:
+      - name: debian-normal
+        volume-type: gp2  # winner (normal)
+      - name: debian-large
+      - name: debian-local-normal

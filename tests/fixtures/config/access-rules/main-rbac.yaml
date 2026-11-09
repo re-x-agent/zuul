@@ -1,0 +1,23 @@
+- authorization-rule:
+    name: user-rule
+    conditions:
+      - groups: users
+
+- api-root:
+    anonymous-read-access: false
+    role-mappings:
+      user-rule:
+        - read
+
+- tenant:
+    name: tenant-one
+    anonymous-read-access: false
+    role-mappings:
+      user-rule:
+        - read
+    source:
+      gerrit:
+        config-projects:
+          - common-config
+        untrusted-projects:
+          - org/project

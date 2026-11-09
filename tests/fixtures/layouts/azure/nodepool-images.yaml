@@ -1,0 +1,97 @@
+- pipeline:
+    name: check
+    manager: independent
+    trigger:
+      gerrit:
+        - event: patchset-created
+    success:
+      gerrit:
+        Verified: 1
+    failure:
+      gerrit:
+        Verified: -1
+
+- image:
+    name: debian-id
+    type: cloud
+
+- image:
+    name: debian-filter
+    type: cloud
+
+- image:
+    name: debian-community
+    type: cloud
+
+- image:
+    name: debian-shared
+    type: cloud
+
+- flavor:
+    name: normal
+
+- label:
+    name: debian-normal-id
+    image: debian-id
+    flavor: normal
+
+- label:
+    name: debian-normal-filter
+    image: debian-filter
+    flavor: normal
+
+- label:
+    name: debian-normal-community
+    image: debian-community
+    flavor: normal
+
+- label:
+    name: debian-normal-shared
+    image: debian-shared
+    flavor: normal
+
+- section:
+    name: azure-base
+    abstract: true
+    connection: azure
+    launch-timeout: 600
+    launch-attempts: 2
+    label-defaults:
+      host-key-checking: false
+      boot-timeout: 120
+      key-data: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC+mplenM+m6pNY9Un3fpO9eqf808Jrfb3d1gXg7BZVawCvtEZ/cDYvLQ3OF1AeL2kcIC0UAIglM5JXae7yO5CJbJRdkbXvv0u1LvpLxYSPM4ATR0r4IseC5YVxkfJQNi4ixSwTqD4ScEkuCXcSqSU9M+hB+KlnwXoR4IcYHf7vD2Z0Mdwm2ikk3SeERmspmMxx/uz0SPn58QxONuoTlNWQKqDWsV6bRyoPa6HWccMrIH1/e7E69Nw/30oioOQpKBgaDCauh+QkDtSkjRpRMOV47ZFh16Q9DqMgLx+FD8z6++9rsHlB65Zas1xyQsiRCFG09s00b7OR7Xz9ukQ5+vXV
+      subnet-id: /subscriptions/c35cf7df-ed75-4c85-be00-535409a85120/resourceGroups/nodepool/providers/Microsoft.Network/virtualNetworks/NodePool/subnets/default
+    flavors:
+      - name: normal
+        vm-size: Standard_B1ls
+    images:
+      - name: debian-id
+        image-id: /subscriptions/c35cf7df-ed75-4c85-be00-535409a85120/resourceGroups/nodepool/providers/Microsoft.Compute/images/test-image-1234
+      - name: debian-filter
+        image-filter:
+          name: test1
+      - name: debian-community
+        community-gallery-image:
+          gallery-name: community-gallery
+          name: community-image
+          version: latest
+      - name: debian-shared
+        shared-gallery-image:
+          gallery-name: shared-gallery
+          name: shared-image
+          version: latest
+
+- section:
+    name: azure-centralus
+    parent: azure-base
+    region: centralus
+
+- provider:
+    name: azure-main
+    section: azure-centralus
+    labels:
+      - name: debian-normal-id
+      - name: debian-normal-filter
+      - name: debian-normal-community
+      - name: debian-normal-shared
+    resource-group: nodepool

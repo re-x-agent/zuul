@@ -1,0 +1,13 @@
+- hosts: all
+  roles:
+    - revoke-sudo
+    - set-zuul-log-path-fact
+    - js-package-manager
+  environment:
+    REACT_APP_ZUUL_API: "{% if zuul_api_url is defined %}{{ zuul_api_url }}/api/{% endif %}"
+    PUBLIC_URL: './'
+    # NOTE: using "./" is not enough to support html5 links, even with
+    # rewrite rules for unknown files, accessing 'job/devstack' will make
+    # the dashboard load static files from 'job/static/...'
+    # This works for the preview dashboard that can only be loaded from the
+    # npm/html directory anyway.

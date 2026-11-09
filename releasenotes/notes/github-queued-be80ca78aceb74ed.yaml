@@ -1,0 +1,7 @@
+---
+features:
+  - |
+    The :attr:`pipeline.<reporter>.<github source>.check` attribute
+    now accepts the value of :value:`pipeline.<reporter>.<github
+    source>.check.queued` to indicate that a pull request has been
+    enqueued into a pipeline.

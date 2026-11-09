@@ -1,0 +1,15 @@
+---
+features:
+  - |
+    A new component, the Zuul :ref:`launcher`, is available.
+    Zuul-launcher is responsible for managing images and build nodes,
+    and replaces Nodepool.  Zuul supports both systems simultaneously
+    for transitional purposes.
+
+    See :ref:`build_nodes` for an overview of the new system and
+    information about migrating.
+deprecations:
+  - |
+    The use of Nodepool is now deprecated.  Support will be removed in
+    a future version of Zuul (after a generous period where both
+    Nodepool and Zuul-launcher are supported).

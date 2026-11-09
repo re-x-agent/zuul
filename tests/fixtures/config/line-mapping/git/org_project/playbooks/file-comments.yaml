@@ -1,0 +1,24 @@
+- hosts: all
+  tasks:
+    - zuul_return:
+        data:
+          zuul:
+            file_comments:
+              README:
+                - line: 3
+                  message: line 3 comment
+                # An intervening change to master inserted a new line 5
+                - line: 8
+                  message: line 7 comment
+                - line: 15
+                  message: range comment for line 14
+                  range:
+                    start_line: 12
+                    start_character: 0
+                    end_line: 15
+                    end_character: 26
+                - line: 101
+                  message: line 100 comment
+                # Line 102 is a new line in this change
+                - line: 102
+                  message: line 101 comment

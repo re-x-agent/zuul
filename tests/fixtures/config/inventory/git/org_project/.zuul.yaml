@@ -1,0 +1,11 @@
+- project:
+    name: org/project
+    check:
+      jobs:
+        - single-inventory
+        - single-inventory-list
+        - executor-only-inventory
+        - group-inventory
+        - hostvars-inventory
+        - ansible-version9-inventory
+        - ansible-version11-inventory
