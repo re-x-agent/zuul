@@ -8921,12 +8921,6 @@ class Change(Branch):
             pname = self.project.name
         return '%s %s %s' % (type(self).__name__, pname, self._id())
 
-    def sharesTopic(self, other):
-        # Whether this change is in the same topic as another one.
-        # Drivers with a different notion of a topic override this.
-        return bool(self.topic and other.topic and
-                    self.topic.casefold() == other.topic.casefold())
-
     def equals(self, other):
         if (super().equals(other) and
             isinstance(other, Change) and

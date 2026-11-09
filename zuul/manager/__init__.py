@@ -392,7 +392,9 @@ class PipelineManager(metaclass=ABCMeta):
                     # changes in the new topic need to find it, and
                     # queued changes which depended on it by topic
                     # need to drop it.
-                    if change.sharesTopic(item_change):
+                    if (change.topic and item_change.topic and
+                            change.topic.casefold() ==
+                            item_change.topic.casefold()):
                         to_refresh.add(item_change)
                     for dep_change_ref in (
                             item_change.topic_needs_changes or []):
