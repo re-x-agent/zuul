@@ -1,7 +1,7 @@
 # 0002 The form of the topic read by Zuul's GitHub driver: the marker form (`topic:` + label value), exact match, a per-connection option (2026-11-09)
 
 Status: **Decided** (user decision; a series of judgments from 2026-11-09 18:18 to 20:03; the final form follows the definition fixed on 2026-11-09 19:53).
-Sources: `~/work-orders/zuul-topic-marker-rename.result.md` (final form, the change of name, the fixed definition), `~/work-orders/zuul-topic-drop-prefix.result.md` (record of the form not adopted), `~/work-orders/zuul-topic-exact-match.result.md` (fixing exact match), `~/work-orders/zuul-github-topic-proposal.draft.md` (draft of the proposal to Zuul).
+Sources: internal working records of the author (not public), and the prototype with its verification evidence: https://github.com/re-x-agent/zuul/compare/14.3.0...topic-label-deps (discussion: https://github.com/re-x-agent/zuul/pull/1).
 Related: ADR 0001 (decision 1: a Topic is attached with a GitHub label). This ADR defines how Zuul's GitHub driver reads that Topic.
 
 ## Background
