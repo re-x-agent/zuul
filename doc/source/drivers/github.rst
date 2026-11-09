@@ -708,7 +708,10 @@ Some points to be aware of:
   union of the installations of the App, and pull requests in
   repositories which the token can not see (for example private
   repositories of an account without an installation) are not found.
-  The reach is not limited to the projects of a single tenant.
+  The reach is not limited to the projects of a single tenant.  The
+  search is the only source of the other pull requests of a topic:
+  the change cache which Zuul fills from webhook events is not used
+  for this, because it only keeps changes with recent activity.
 * The GitHub search API has its own rate limit, separate from the
   rate limit of the rest of the API (30 requests per minute for
   authenticated requests at the time of writing).
