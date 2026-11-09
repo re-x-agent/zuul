@@ -387,6 +387,22 @@ class PipelineManager(metaclass=ABCMeta):
                     dep_change_key = ChangeKey.fromReference(dep_change_ref)
                     if dep_change_key.isSameChange(change.cache_stat.key):
                         to_refresh.add(item_change)
+                if event.isTopicChanged():
+                    # The change joined or left a topic.  Queued
+                    # changes in the new topic need to find it, and
+                    # queued changes which depended on it by topic
+                    # need to drop it.
+                    if (change.topic and item_change.topic and
+                            change.topic.casefold() ==
+                            item_change.topic.casefold()):
+                        to_refresh.add(item_change)
+                    for dep_change_ref in (
+                            item_change.topic_needs_changes or []):
+                        dep_change_key = ChangeKey.fromReference(
+                            dep_change_ref)
+                        if dep_change_key.isSameChange(
+                                change.cache_stat.key):
+                            to_refresh.add(item_change)
 
         for existing_change in to_refresh:
             self.updateCommitDependencies(existing_change, event)
