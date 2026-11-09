@@ -1697,7 +1697,7 @@ class GithubConnection(ZKChangeCacheMixin, ZKBranchCacheMixin, BaseConnection):
                         continue
                     seen.add(key)
                     keys.append(key)
-                log.debug("Ran search issues: %s", query)
+                log.info("Ran search issues for topic %s: %s", topic, query)
 
         changes = []
         for proj, num, sha in keys:
