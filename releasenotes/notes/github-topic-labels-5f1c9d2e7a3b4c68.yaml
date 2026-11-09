@@ -2,11 +2,14 @@
 features:
   - |
     The GitHub driver can now read a topic from pull request labels.
-    If the new connection option
-    :attr:`<github connection>.topic_label_marker` is set, labels
-    with that marker define the topic of a pull request, and queues
-    which set :attr:`queue.dependencies-by-topic` treat open pull
-    requests with the same topic as circular dependencies.  Adding or
-    removing a topic label re-evaluates pull requests of that topic
-    which are already queued.  The option is unset by default, which
-    leaves existing behavior unchanged.
+    A label is read as a label name, a separator (``:``) and a label
+    value.  If the new connection option
+    :attr:`<github connection>.topic_label_marker` is set to the label
+    name plus the separator (for example ``topic:``), the label value
+    of a label which starts with the marker is the topic of the pull
+    request.  Topics are compared by exact match of the label value.
+    Queues which set :attr:`queue.dependencies-by-topic` treat open
+    pull requests with the same topic as circular dependencies.
+    Adding or removing a topic label re-evaluates pull requests of
+    that topic which are already queued.  The option is unset by
+    default, which leaves existing behavior unchanged.

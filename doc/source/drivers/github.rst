@@ -264,15 +264,19 @@ The supported options in ``zuul.conf`` connections are:
    .. attr:: topic_label_marker
       :default: None
 
-      A label is read as a *label name*, a *separator* and a *label
-      value*.  The marker is the label name plus the separator (for
-      example ``topic:``).  If set, a pull request label which starts
-      with the marker (compared case-insensitively) is read as a
-      *topic*: the label value, which is everything after the marker,
-      is the topic.  For example, with ``topic_label_marker=topic:``
-      the label ``topic:release-1.4`` puts a pull request in the topic
-      ``release-1.4``.  Topics are compared by exact match of the
-      label value, never by prefix.
+      The marker which identifies a pull request label as a *topic*
+      label.  A label is read as a *label name*, a *separator* (``:``)
+      and a *label value*.  The marker is the label name plus the
+      separator, for example ``topic:``.  A label which starts with
+      the marker (compared case-insensitively) is a topic label, and
+      the label value, which is everything after the marker, is the
+      topic.  For example, with ``topic_label_marker=topic:`` the
+      label ``topic:release-1.4`` puts a pull request in the topic
+      ``release-1.4``.
+
+      Topics are compared by exact match of the label value (ignoring
+      case, like GitHub label names), never by prefix: ``1`` and
+      ``11`` are different topics.
 
       Pull requests of this connection which are open and have the
       same topic are treated as dependencies of each other in queues
@@ -630,16 +634,49 @@ Topic dependencies
 ------------------
 
 GitHub has no built-in notion of a topic, but labels can serve as
-one.  When the connection option :attr:`<github connection>.topic_label_marker`
-is set, and a queue sets :attr:`queue.dependencies-by-topic` (and
-:attr:`queue.allow-circular-dependencies`), all open pull requests of
-the connection that carry the same topic label are treated as a set of
-circular dependencies, just as changes in the same Gerrit topic are.
+one.  GitHub does not split a label into parts, so Zuul reads a label
+by convention as a *label name*, a *separator* (``:``) and a *label
+value*; the label ``topic:release-1.4`` has the name ``topic`` and the
+value ``release-1.4``.  The connection option
+:attr:`<github connection>.topic_label_marker` (the label name plus
+the separator, for example ``topic:``) says which labels carry a
+topic; the label value is the topic.  The first separator ends the
+marker, and everything after it is the value, which may itself contain
+``:`` (``topic:a:b`` has the value ``a:b``).
+
+Two things enable the feature, and both are off by default:
+
+* the connection option, in ``zuul.conf``:
+
+  .. code-block:: ini
+
+     [connection github]
+     driver=github
+     topic_label_marker=topic:
+
+* a queue which sets :attr:`queue.dependencies-by-topic` (and
+  :attr:`queue.allow-circular-dependencies`):
+
+  .. code-block:: yaml
+
+     - queue:
+         name: integrated
+         allow-circular-dependencies: true
+         dependencies-by-topic: true
+
+Then all open pull requests of the connection that have the same topic
+are treated as a set of circular dependencies, just as changes in the
+same Gerrit topic are.  Topics are compared by exact match of the
+label value, ignoring case; there is no prefix or partial matching.
 This can be combined with ``Depends-On:`` footers; the dependencies of
 both kinds are added together.
 
-Adding or removing a topic label on a pull request re-evaluates the
-other pull requests of that topic which are already in a pipeline.
+Labels define the set; they are not a pipeline trigger.  A pull
+request enters a pipeline through the triggers configured for it, as
+usual.  Adding or removing a topic label on a pull request
+re-evaluates the other pull requests of that topic which are already
+in a pipeline: an item whose set changes is dequeued, and the set is
+formed again at the next trigger event.
 
 Some points to be aware of:
 
