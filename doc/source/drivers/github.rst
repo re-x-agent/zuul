@@ -641,9 +641,9 @@ Gerrit changes which share a topic are handled as one set.  The aim of
 topic dependencies for GitHub is to give pull requests the same
 treatment: pull requests with the same topic are handled as one set,
 as changes in the same Gerrit topic are.  GitHub has no built-in
-notion of a topic, but labels can serve as one.  GitHub does not split a label into parts, so Zuul reads a label
-by convention as a *label name*, a *separator* (``:``) and a *label
-value*; the label ``topic:release-1.4`` has the name ``topic`` and the
+notion of a topic, but labels can serve as one.  GitHub does not
+split a label into parts, so Zuul reads a label by convention as a
+*label name*, a *separator* (``:``) and a *label value*; the label ``topic:release-1.4`` has the name ``topic`` and the
 value ``release-1.4``.  The connection option
 :attr:`<github connection>.topic_label_marker` (the label name plus
 the separator, for example ``topic:``) says which labels carry a
@@ -696,6 +696,36 @@ Some points to be aware of:
   has that many pull requests, Zuul reports an error instead of
   using an incomplete set.  Only pull requests in projects configured
   in Zuul are considered.
+* The pull requests of a topic are searched for in the repositories
+  of the accounts (organizations or users) where the GitHub App is
+  installed, with the installation token of each account (one query
+  per account and label value).  If the connection uses only an
+  ``api_token``, the accounts of the projects configured in Zuul are
+  searched with that token.  Only pull requests in projects which are
+  configured in Zuul for this connection (in any tenant) are used.
+  Therefore a set can contain pull requests of several accounts, as
+  long as the App is installed on each of them: its reach is the
+  union of the installations of the App, and pull requests in
+  repositories which the token can not see (for example private
+  repositories of an account without an installation) are not found.
+  The reach is not limited to the projects of a single tenant.
+* The GitHub search API has its own rate limit, separate from the
+  rate limit of the rest of the API (30 requests per minute for
+  authenticated requests at the time of writing).
+* Labels belong to a repository: a topic label must exist in each
+  repository whose pull requests are to be in the topic.  Pull
+  requests of different repositories are in the same topic only if
+  their label values are identical.
+* The topic of a pull request is available to jobs as the
+  ``topic`` of the change, as for other drivers (see
+  :ref:`job-content`).  Draft pull requests are open pull requests
+  and are found by the search; use the
+  :attr:`pipeline.require.<github source>.draft` requirement if they
+  should not be enqueued.
+* The ``labeled`` and ``unlabeled`` events must be delivered to Zuul
+  (the ``pull_request`` event of the GitHub App or webhook) for the
+  other pull requests of a topic to be re-evaluated when a label
+  changes.
 * This only affects dependency resolution.  GitHub can not merge
   several pull requests atomically, so the caveats noted at
   :attr:`queue.allow-circular-dependencies` apply.
